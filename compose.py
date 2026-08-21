@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """compose — prompt-to-music CLI.
 
-Describe a piano piece in plain words; the Kimi CLI composes it as structured
-JSON, and musiclib renders sheet music (PDF), MIDI and audio (WAV/MP3).
+Describe a piano piece in plain words; the selected AI CLI composes it as
+structured JSON, and musiclib renders sheet music (PDF), MIDI and audio
+(WAV/MP3).
 
 Usage:
     python3 compose.py "a dreamy waltz in F major, slow and gentle"
     python3 compose.py "sad nocturne in A minor" --title "Night Rain" --bars 24
     python3 compose.py "happy ragtime" --no-audio --keep-json
 
-Requires the `kimi` CLI (logged in) for composition, and ffmpeg for MP3
+Requires a logged-in `kimi` or `codex` CLI for composition, and ffmpeg for MP3
 (optional; WAV is always produced).
 """
 import argparse, json, os, re, subprocess, sys, tempfile
@@ -47,19 +48,26 @@ def slugify(text):
     s = re.sub(r"[^\w\s-]", "", text).strip().replace(" ", "_")
     return re.sub(r"_+", "_", s) or "composition"
 
-def compose_with_kimi(prompt, bars, json_path, constraints, timeout):
+def compose_with_ai(provider, prompt, bars, json_path, constraints, timeout):
     full = SCHEMA.format(prompt=prompt, constraints=constraints,
                          path=json_path, bars=bars)
     for attempt in (1, 2):
         if os.path.exists(json_path):
             os.remove(json_path)
-        proc = subprocess.run(["kimi", "-p", full], capture_output=True, text=True,
+        if provider == "kimi":
+            command = ["kimi", "-p", full]
+        else:
+            command = ["codex", "exec", "--ephemeral", "-C",
+                       os.path.dirname(os.path.abspath(__file__)), full]
+        proc = subprocess.run(command, capture_output=True, text=True,
                               timeout=timeout)
         if not os.path.exists(json_path):
             err = (proc.stdout + proc.stderr)[-500:]
             if attempt == 2:
-                raise RuntimeError("kimi did not write the score file. Output:\n" + err)
-            full += "\n\nPrevious attempt failed: you must WRITE THE JSON FILE with your file tool, then reply OK."
+                raise RuntimeError(f"{provider} did not write the score file. Output:\n" + err)
+            full += ("\n\nPrevious attempt failed: do not inspect or explain. "
+                     "Immediately WRITE THE JSON FILE at the exact path with your file tool, "
+                     "validate every bar, then reply OK.")
             continue
         try:
             data = json.load(open(json_path))
@@ -78,10 +86,12 @@ def main():
     ap.add_argument("--bars", type=int, default=32, help="number of bars, 8-64 (default 32; 32 bars at ~70bpm ≈ 2 min)")
     ap.add_argument("--constraints", default="",
                     help="extra composition constraints appended to the prompt")
+    ap.add_argument("--composer", choices=("kimi", "codex"), default="kimi",
+                    help="AI CLI used to compose the score (default: kimi)")
     ap.add_argument("--out", help="output basename (default: slugified title)")
     ap.add_argument("--no-audio", action="store_true", help="skip WAV/MP3 rendering")
     ap.add_argument("--keep-json", action="store_true", help="keep the intermediate score JSON")
-    ap.add_argument("--timeout", type=int, default=600, help="kimi CLI timeout in seconds")
+    ap.add_argument("--timeout", type=int, default=600, help="AI CLI timeout in seconds")
     args = ap.parse_args()
 
     if not 8 <= args.bars <= 64:
@@ -96,9 +106,9 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmp:
         json_path = os.path.join(tmp, "score.json")
-        print(f"Composing {args.bars} bars with Kimi...", flush=True)
-        score = compose_with_kimi(args.prompt, args.bars, json_path,
-                                  args.constraints, args.timeout)
+        print(f"Composing {args.bars} bars with {args.composer.title()}...", flush=True)
+        score = compose_with_ai(args.composer, args.prompt, args.bars, json_path,
+                                args.constraints, args.timeout)
         if not args.out:
             basename = os.path.join(os.path.dirname(basename), slugify(score["title"]))
         if args.keep_json:

@@ -63,11 +63,15 @@ ss -tln | awk 'NR>1{print $4}' | sort > /tmp/piano_before.ports
 # --- share directory -------------------------------------------------------
 echo "==> Creating $SHARE_DIR (as $REAL_USER)"
 as_user mkdir -p "$SHARE_DIR"
+# Only copy media when the script actually lives in the piano project —
+# running from /tmp (or anywhere else) must not scoop up unrelated files.
 copied=0
-for f in "$SCRIPT_DIR"/*.pdf "$SCRIPT_DIR"/*.mid "$SCRIPT_DIR"/*.mp3 "$SCRIPT_DIR"/*.wav "$SCRIPT_DIR"/*.m4a; do
-    [ -e "$f" ] || continue
-    as_user cp -n "$f" "$SHARE_DIR/" && copied=$((copied+1))
-done
+if [ -f "$SCRIPT_DIR/compose.py" ] && [ -f "$SCRIPT_DIR/musiclib.py" ]; then
+    for f in "$SCRIPT_DIR"/*.pdf "$SCRIPT_DIR"/*.mid "$SCRIPT_DIR"/*.mp3 "$SCRIPT_DIR"/*.wav "$SCRIPT_DIR"/*.m4a; do
+        [ -e "$f" ] || continue
+        as_user cp -n "$f" "$SHARE_DIR/" && copied=$((copied+1))
+    done
+fi
 echo "    $copied file(s) copied (never overwrites)"
 if runuser -u www-data -- test -r "$SHARE_DIR" -a -x "$SHARE_DIR" 2>/dev/null; then
     echo "    nginx (www-data) can read the share"
