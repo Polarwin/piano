@@ -32,7 +32,8 @@ WEEKS = [
              "hand, one chord per bar, slow and steady."),
         (5,  "The F Chord",
              "The F major chord (F-A-C) as a genuine simultaneous chord (chord events); "
-             "then C-F-G progressions in the left hand, one chord per bar."),
+             "then C-F-G progressions in the left hand, one chord per bar. Do not use "
+             "or mention Ode to Joy here: its reading lesson is not introduced until Day 8."),
         (7,  "Melody with Chords",
              "A simple right-hand melody accompanied by genuine left-hand chords "
              "(chord events, one per bar, whole or half notes) using C, F and G."),
@@ -90,7 +91,8 @@ WEEKS = [
              "then broken, then C-Am changes."),
         (20, "Playing in A Minor",
              "Simple melancholy playing in A minor. The exercise is the famous opening "
-             "motif of Beethoven's 'Fur Elise' and MUST set \"melody\": \"fur_elise\"."),
+             "motif of Beethoven's 'Fur Elise' and MUST set \"melody\": \"fur_elise\". "
+             "If referring to legato, say it was introduced on Day 18, not Day 19."),
         (21, "Waltz Rhythm in 3/4",
              "Three beats per bar, the um-pah-pah waltz feel: left hand bass note then "
              "chord-chord pattern. Use Brahms' Lullaby as the gentle right-hand melody."),
@@ -119,7 +121,8 @@ WEEKS = [
         (27, "Playing Expressively",
              "Phrasing: thinking in musical sentences, breathing at the ends of phrases. "
              "The exercise is after Schumann's 'Traumerei' and MUST set "
-             "\"melody\": \"traumerei\"; shape it with small crescendos and diminuendos."),
+             "\"melody\": \"traumerei\"; shape it with small crescendos and diminuendos. "
+             "Dynamics were introduced on Day 17 (not Day 18)."),
         (28, "Your First Waltz",
              "A complete gentle waltz combining 3/4 time, broken-chord accompaniment and a "
              "singing melody, after Brahms' Waltz Op. 39 No. 15. The exercise MUST set "
@@ -137,7 +140,10 @@ WEEKS = [
              "The month-one recital goal: the famous opening of Beethoven's 'Fur Elise' "
              "in A minor with a gentle chord accompaniment. The recital exercise MUST set "
              "\"melody\": \"fur_elise\". Tips for playing through without stopping, and "
-             "ideas for performing it for family and friends."),
+             "ideas for performing it for family and friends. Keep historical references "
+             "accurate: dynamics were introduced on Day 17, legato/staccato on Day 18, "
+             "and eighth notes on Day 6. Do not claim that hands-separate practice was "
+             "introduced on Day 27; simply advise practising each hand separately."),
     ]),
 ]
 
@@ -165,7 +171,8 @@ def prompt_for(day, week, title, topic):
         f"This week's theme: {week}. Today's lesson is \"{title}\": {topic}\n"
         f"The student has already covered: {'; '.join(covered)}. Build gently on that — "
         f"brief recall is welcome, but do not re-teach earlier material in depth, and do "
-        f"not use any concept not yet introduced.\n"
+        f"not use any concept not yet introduced. When naming an earlier day, verify its "
+        f"number against this sequence; if unsure, omit the day number.\n"
         f"If the topic says an exercise MUST set \"melody\" to a key, do exactly that and "
         f"omit rh/lh for that exercise — reviewed notes are injected automatically; never "
         f"write those notes yourself. Any exercises you invent yourself must fit the "
