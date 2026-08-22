@@ -52,7 +52,19 @@ function renderLessons(){let me=userInput.value.trim();
   let shown=lessonsExpanded?items:items.slice(0,5);
   lessonsList.innerHTML=items.length?shown.map(p=>{let doneBy=Object.keys(progress[p.stem]||{}).sort(),mine=me&&doneBy.some(u=>u.toLowerCase()===me.toLowerCase());return `<div class="piece"><span class="piece-name">${esc(p.name)}${doneBy.length?`<span class="who">✓ ${doneBy.map(esc).join(', ')}</span>`:''}</span><span class="links">${me?`<a href="#" class="done${mine?' on':''}" data-stem="${esc(p.stem)}" data-mine="${mine?1:0}">${mine?'✓ done':'mark done'}</a>`:''}${Object.entries(p.files).map(([k,v])=>`<a href="${encodeURI(v)}" target="_blank">${esc(k)}</a>`).join('')}</span></div>`}).join(''):(lessonsData.length?'<p class="empty">All visible lessons finished — nicely done. Untick “hide my finished” to review them.</p>':'<p class="empty">No lessons yet — create one below.</p>');
   moreLink.hidden=items.length<=5;
-  moreLink.textContent=lessonsExpanded?'show less ▴':`show all ${items.length} lessons ▾`}
+  moreLink.textContent=lessonsExpanded?'show less ▴':`show all ${items.length} lessons ▾`;
+  // Suggest the next lesson from the current user's progress.
+  let days=lessonsData.map(p=>{let m=p.name.match(/^day\s*(\d+)/i);return m?+m[1]:null}).filter(x=>x);
+  if(me&&days.length){
+    let maxDay=Math.max(...days);
+    let doneDays=new Set(lessonsData.filter(p=>Object.keys(progress[p.stem]||{}).some(u=>u.toLowerCase()===me.toLowerCase())).map(p=>{let m=p.name.match(/^day\s*(\d+)/i);return m?+m[1]:null}));
+    let next=1;while(next<=maxDay&&doneDays.has(next))next++;
+    lessonTitle.placeholder=`Day ${next} — …`;
+    if(next<=maxDay){
+      lessonPrompt.placeholder=`Next up for you: Day ${next} — it's already in the list above. Or describe a different lesson…`;
+    }else{
+      lessonPrompt.placeholder=`e.g. "Day ${next} piano lesson for an adult beginner who finished days 1–${maxDay}: the next gentle step, with short exercises"`;
+    }}
 async function loadProgress(){try{let r=await fetch('api/progress');progress=await r.json();let users=[...new Set(Object.values(progress).flatMap(e=>Object.keys(e)))].sort();document.querySelector('#known-users').innerHTML=users.map(u=>`<option value="${esc(u)}">`).join('')}catch{}}
 lessonsList.addEventListener('click',async e=>{let a=e.target.closest('a.done');if(!a)return;e.preventDefault();let me=userInput.value.trim();if(!me)return;try{let r=await fetch('api/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:me,stem:a.dataset.stem,done:a.dataset.mine!=='1'})});if(r.ok){progress=await r.json();renderLessons()}}catch{}});
 async function loadLibrary(){try{let r=await fetch('api/library'),d=await r.json();let pieces=d.pieces.filter(p=>!p.lesson),lessons=d.pieces.filter(p=>p.lesson);library.innerHTML=pieces.length?pieces.map(render).join(''):'<p class="empty">Your first composition will appear here.</p>';lessonsData=lessons.sort((a,b)=>{let d=s=>{let m=s.match(/^day\s*(\d+)/i);return m?0:1},n=s=>{let m=s.match(/^day\s*(\d+)/i);return m?+m[1]:0};return d(a.name)-d(b.name)||n(a.name)-n(b.name)||a.name.localeCompare(b.name)});renderLessons()}catch{library.innerHTML='<p class="empty">Could not load the library.</p>'}}

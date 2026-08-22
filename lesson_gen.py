@@ -37,6 +37,7 @@ Rules:
 - Audience: an adult absolute beginner. Warm, plain language, short paragraphs. 4-7 sections, 1-4 exercises.
 - Exercise notes: ["letter", octave, duration, finger] — letter A-G (sharps/flats only if the lesson teaches them), octave 2-5, duration one of 0.5, 1, 1.5, 2, 3, 4 (quarter note = 1), finger 1-5 (thumb = 1).
 - Every exercise's durations must sum to a multiple of 4 beats. Keep hands in five-finger positions (left C2-G2 area, right C4-G5 area).
+- One note at a time per hand — the engraver cannot draw simultaneous notes. To teach a chord, write its tones as successive whole notes (one per bar) and describe them as a broken chord.
 - Exercises must fit the lesson topic and progress gently.
 """
 

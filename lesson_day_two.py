@@ -176,6 +176,6 @@ def build(path):
     d.save()
 
 if __name__ == "__main__":
-    out = os.path.join(OUT, "Piano_Day_Two_Lesson.pdf")
+    out = os.path.join(OUT, "Day_2_Both_Hands_Together.pdf")
     build(out)
     print("Created", out)

@@ -11,7 +11,7 @@ from reportlab.lib.colors import HexColor
 from reportlab.pdfbase import pdfmetrics
 
 import musiclib
-from musiclib import draw_notehead, draw_ledger, staff_y, register_fonts, LINE, STEP
+from musiclib import draw_notehead, draw_ledger, draw_flag, staff_y, register_fonts, LINE, STEP
 
 OUT = "/srv/files/piano/lessons" if os.path.isdir("/srv/files/piano/lessons") and os.access("/srv/files/piano/lessons", os.W_OK) else os.path.dirname(os.path.abspath(__file__))
 W, H = A4
@@ -106,28 +106,66 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True):
         y = staff_y(letter, octave, yb, clef)
         reach = y - (24 if (dur < 4 and y < yb + 2 * LINE) else 8)
         name_y = min(name_y, reach)
+    # Precompute positions (also used for barlines).
+    pos = []
     beat = 0.0
-    for letter, octave, dur, finger in notes:
+    for letter, octave, dur, _ in notes:
         x = left + width * (beat / total) + (width / total) * 0.35
-        y = staff_y(letter, octave, yb, clef)
-        c.setLineWidth(0.9); c.setStrokeColor(INK)
-        draw_ledger(c, x, y, yb)
-        draw_notehead(c, x, y, hollow=(dur >= 2))
-        if dur < 4:
-            up = y < yb + 2 * LINE
-            c.line(x + 2.7 if up else x - 2.7, y, x + 2.7 if up else x - 2.7,
-                   y + (20 if up else -20))
-        if dur in (1.5, 3):
-            c.setFillColor(INK)
-            c.circle(x + 6.5, y + (STEP if round((y - yb) / STEP) % 2 == 0 else 0), 0.9, fill=1, stroke=0)
+        pos.append((x, staff_y(letter, octave, yb, clef)))
+        beat += dur
+
+    def annotate(k, letter, finger):
+        x, y = pos[k]
         if show_fingers and finger:
             c.setFont("Serif", 8.5); c.setFillColor(ACCENT)
             c.drawCentredString(x, yb + 4 * LINE + 8, str(finger))
         if show_names:
             c.setFont("Serif", 8.5); c.setFillColor(GRAY)
             c.drawCentredString(x, name_y, letter)
+
+    i = 0
+    while i < len(notes):
+        letter, octave, dur, finger = notes[i]
+        x, y = pos[i]
+        c.setLineWidth(0.9); c.setStrokeColor(INK)
+        if dur == 0.5 and i + 1 < len(notes) and notes[i + 1][2] == 0.5:
+            # A run of eighth notes: shared beam instead of flags.
+            j = i
+            while j < len(notes) and notes[j][2] == 0.5:
+                j += 1
+            ys = [pos[k][1] for k in range(i, j)]
+            up = sum(ys) / len(ys) < yb + 2 * LINE
+            by = (max(ys) + 20) if up else (min(ys) - 20)
+            for k in range(i, j):
+                xk, yk = pos[k]
+                draw_ledger(c, xk, yk, yb)
+                draw_notehead(c, xk, yk, hollow=False)
+                sx = xk + 2.7 if up else xk - 2.7
+                c.line(sx, yk, sx, by)
+                annotate(k, notes[k][0], notes[k][3])
+            c.setFillColor(INK)
+            xa = pos[i][0] + (2.7 if up else -2.7)
+            c.rect(xa, by - 2.4 if up else by, pos[j - 1][0] - pos[i][0], 2.4, fill=1, stroke=0)
+        else:
+            draw_ledger(c, x, y, yb)
+            draw_notehead(c, x, y, hollow=(dur >= 2))
+            if dur < 4:
+                up = y < yb + 2 * LINE
+                sx = x + 2.7 if up else x - 2.7
+                end = y + (20 if up else -20)
+                c.line(sx, y, sx, end)
+                if dur <= 0.5:
+                    draw_flag(c, sx, end, up)
+            if dur in (1.5, 3):
+                c.setFillColor(INK)
+                c.circle(x + 6.5, y + (STEP if round((y - yb) / STEP) % 2 == 0 else 0), 0.9, fill=1, stroke=0)
+            annotate(i, letter, finger)
+        i += 1 if (dur != 0.5 or i + 1 >= len(notes) or notes[i + 1][2] != 0.5) else (j - i)
+    # Barlines every 4 beats.
+    beat = 0.0
+    for letter, octave, dur, _ in notes:
         beat += dur
-        if abs(beat % 4) < 1e-9 and beat < total:      # barline every 4 beats
+        if abs(beat % 4) < 1e-9 and beat < total:
             bx = left + width * (beat / total)
             c.setLineWidth(0.55); c.setStrokeColor(HexColor("#222222"))
             c.line(bx, yb, bx, yb + 4 * LINE)
@@ -255,6 +293,6 @@ def build(path):
     d.save()
 
 if __name__ == "__main__":
-    out = os.path.join(OUT, "Piano_Day_One_Lesson.pdf")
+    out = os.path.join(OUT, "Day_1_Meet_the_Piano.pdf")
     build(out)
     print("Created", out)
