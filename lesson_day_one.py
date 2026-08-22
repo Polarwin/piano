@@ -83,9 +83,93 @@ class Doc:
 # --------------------------------------------------------------------------
 # music drawing
 # --------------------------------------------------------------------------
-def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True):
-    """notes: [(letter, octave, dur, finger), ...]; 4/4, barline every 4 beats."""
-    doc.need(105)
+REST_GLYPH = {4: "\U0001D13B", 3: "\U0001D13C", 2: "\U0001D13C",
+              1.5: "\U0001D13D", 1: "\U0001D13D", 0.5: "\U0001D13E"}
+ACC_SIGN = {"#": "♯", "b": "♭"}
+
+def as_events(notes):
+    """Normalize v1 (letter, octave, dur, finger) tuples and v2 validated
+    events into (kind, payload, dur, label):
+      note  -> ("note", (letter, acc, octave), dur, finger)
+      rest  -> ("rest", None, dur, None)
+      chord -> ("chord", [(letter, acc, octave), ...], dur, "1-3-5")."""
+    out = []
+    for n in notes:
+        if n[0] == "rest":
+            out.append(("rest", None, float(n[2] if len(n) > 2 else n[1]), None))
+        elif n[0] == "chord":
+            out.append(("chord", [tuple(t) for t in n[1]], float(n[2]),
+                        n[3] if len(n) > 3 else None))
+        elif n[0] == "note":
+            out.append(("note", tuple(n[1]), float(n[2]), n[3]))
+        else:  # v1 tuple
+            letter, octave, dur, finger = n
+            acc = letter[1:] if len(letter) > 1 else ""
+            out.append(("note", (letter[0], acc, int(octave)), float(dur), finger))
+    return out
+
+def note_ys(payload, yb, clef):
+    """Staff y positions for a note or chord payload."""
+    tones = payload if isinstance(payload, list) else [payload]
+    return [staff_y(l, o, yb, clef) for l, _, o in tones]
+
+def draw_rest(c, x, yb, dur):
+    c.setFont("Clef", 15); c.setFillColor(INK)
+    c.drawCentredString(x, yb + 2 * LINE - 4.5, REST_GLYPH[dur])
+    if dur in (1.5, 3):
+        c.circle(x + 7, yb + 2 * LINE - 2, 0.9, fill=1, stroke=0)
+
+def draw_acc(c, x, y, acc, offs=0):
+    if acc:
+        c.setFont("Music", 9); c.setFillColor(INK)
+        c.drawRightString(x - 4.5 - offs, y - 3, ACC_SIGN[acc])
+
+def event_name(kind, payload):
+    if kind == "rest":
+        return ""
+    tones = payload if isinstance(payload, list) else [payload]
+    return "+".join(l + a for l, a, _ in tones)
+
+def split_bars(evs, bar_beats):
+    """Split events into a list of bars (lists of events)."""
+    bars, cur, acc = [], [], 0.0
+    for ev in evs:
+        cur.append(ev)
+        acc += ev[2]
+        if abs(acc - bar_beats) < 1e-9:
+            bars.append(cur)
+            cur, acc = [], 0.0
+    if cur:
+        bars.append(cur)
+    return bars
+
+def bar_chunks(evs, bar_beats, max_events=16):
+    """Split events into bar-aligned chunks of about max_events each."""
+    chunks, cur, count = [], [], 0
+    for bar in split_bars(evs, bar_beats):
+        if cur and count + len(bar) > max_events:
+            chunks.append(cur)
+            cur, count = [], 0
+        cur += bar
+        count += len(bar)
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
+             time=(4, 4), tempo=None, dynamic=None):
+    """notes: v1 tuples or v2 events (see as_events). Barlines per time sig."""
+    evs = as_events(notes)
+    bar_beats = time[0] * 4 // time[1]
+    if len(evs) > 16:
+        chunks = bar_chunks(evs, bar_beats, 16)
+        if len(chunks) > 1:
+            for k, chunk in enumerate(chunks):
+                exercise(doc, chunk, clef, show_names, show_fingers, time,
+                         tempo if k == 0 else None, dynamic if k == 0 else None)
+                doc.gap(6)
+            return
+    doc.need(112)
     c = doc.c
     x0, x1 = MARGIN + 30, W - MARGIN
     yb = doc.y - 70                      # bottom line of the staff
@@ -96,76 +180,106 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True):
     c.drawString(x0 + 2, yb - 7 if clef == "treble" else yb + 3,
                  "\U0001D11E" if clef == "treble" else "\U0001D122")
     c.setFont("Serif", 12)
-    c.drawString(x0 + 30, yb + 12, "4"); c.drawString(x0 + 30, yb + 2, "4")
+    c.drawString(x0 + 30, yb + 12, str(time[0])); c.drawString(x0 + 30, yb + 2, str(time[1]))
+    if tempo or dynamic:
+        c.setFont("SerifItalic", 9); c.setFillColor(INK)
+        mark = "  ".join(m for m in (tempo, dynamic) if m)
+        c.drawString(x0 + 48, yb + 4 * LINE + 15, mark)
     left = x0 + 48
     width = x1 - left
-    total = sum(d for _, _, d, _ in notes)
+    total = sum(d for _, _, d, _ in evs)
     # Uniform baseline for note names, below the lowest notehead or down-stem.
     name_y = yb - 13
-    for letter, octave, dur, _ in notes:
-        y = staff_y(letter, octave, yb, clef)
-        reach = y - (24 if (dur < 4 and y < yb + 2 * LINE) else 8)
-        name_y = min(name_y, reach)
+    for kind, payload, dur, _ in evs:
+        if kind == "rest":
+            continue
+        for y in note_ys(payload, yb, clef):
+            reach = y - (24 if (dur < 4 and y < yb + 2 * LINE) else 8)
+            name_y = min(name_y, reach)
     # Precompute positions (also used for barlines).
     pos = []
     beat = 0.0
-    for letter, octave, dur, _ in notes:
+    for kind, payload, dur, _ in evs:
         x = left + width * (beat / total) + (width / total) * 0.35
-        pos.append((x, staff_y(letter, octave, yb, clef)))
+        pos.append((x, note_ys(payload, yb, clef) if kind != "rest" else []))
         beat += dur
 
-    def annotate(k, letter, finger):
-        x, y = pos[k]
-        if show_fingers and finger:
+    def annotate(k, kind, payload, label):
+        x, ys = pos[k]
+        if show_fingers and label:
             c.setFont("Serif", 8.5); c.setFillColor(ACCENT)
-            c.drawCentredString(x, yb + 4 * LINE + 8, str(finger))
-        if show_names:
+            c.drawCentredString(x, yb + 4 * LINE + 8, str(label))
+        if show_names and kind != "rest":
             c.setFont("Serif", 8.5); c.setFillColor(GRAY)
-            c.drawCentredString(x, name_y, letter)
+            c.drawCentredString(x, name_y, event_name(kind, payload))
+
+    def heads(x, kind, payload, dur):
+        """Noteheads + ledger lines + accidentals; returns (min_y, max_y)."""
+        tones = payload if isinstance(payload, list) else [payload]
+        ys = [staff_y(l, o, yb, clef) for l, _, o in tones]
+        hollow = dur >= 2
+        prev_y = None
+        for (l, a, o), y in zip(sorted(tones, key=lambda t: staff_y(t[0], t[2], yb, clef)),
+                                sorted(ys)):
+            hx = x
+            if prev_y is not None and y - prev_y < STEP + 0.1:
+                hx += 5.5                # adjacent steps: stagger the head
+            draw_ledger(c, hx, y, yb)
+            draw_notehead(c, hx, y, hollow)
+            draw_acc(c, hx, y, a)
+            prev_y = y
+        return min(ys), max(ys)
 
     i = 0
-    while i < len(notes):
-        letter, octave, dur, finger = notes[i]
-        x, y = pos[i]
+    while i < len(evs):
+        kind, payload, dur, label = evs[i]
+        x, _ = pos[i]
         c.setLineWidth(0.9); c.setStrokeColor(INK)
-        if dur == 0.5 and i + 1 < len(notes) and notes[i + 1][2] == 0.5:
+        if kind == "rest":
+            draw_rest(c, x, yb, dur)
+            i += 1
+            continue
+        if kind == "note" and dur == 0.5 and i + 1 < len(evs) \
+                and evs[i + 1][0] == "note" and evs[i + 1][2] == 0.5:
             # A run of eighth notes: shared beam instead of flags.
             j = i
-            while j < len(notes) and notes[j][2] == 0.5:
+            while j < len(evs) and evs[j][0] == "note" and evs[j][2] == 0.5:
                 j += 1
-            ys = [pos[k][1] for k in range(i, j)]
+            ys = [pos[k][1][0] for k in range(i, j)]
             up = sum(ys) / len(ys) < yb + 2 * LINE
             by = (max(ys) + 20) if up else (min(ys) - 20)
             for k in range(i, j):
-                xk, yk = pos[k]
+                xk, yk = pos[k][0], pos[k][1][0]
                 draw_ledger(c, xk, yk, yb)
                 draw_notehead(c, xk, yk, hollow=False)
+                draw_acc(c, xk, yk, evs[k][1][1])
                 sx = xk + 2.7 if up else xk - 2.7
                 c.line(sx, yk, sx, by)
-                annotate(k, notes[k][0], notes[k][3])
+                annotate(k, kind, evs[k][1], evs[k][3])
             c.setFillColor(INK)
             xa = pos[i][0] + (2.7 if up else -2.7)
             c.rect(xa, by - 2.4 if up else by, pos[j - 1][0] - pos[i][0], 2.4, fill=1, stroke=0)
-        else:
-            draw_ledger(c, x, y, yb)
-            draw_notehead(c, x, y, hollow=(dur >= 2))
-            if dur < 4:
-                up = y < yb + 2 * LINE
-                sx = x + 2.7 if up else x - 2.7
-                end = y + (20 if up else -20)
-                c.line(sx, y, sx, end)
-                if dur <= 0.5:
-                    draw_flag(c, sx, end, up)
-            if dur in (1.5, 3):
-                c.setFillColor(INK)
-                c.circle(x + 6.5, y + (STEP if round((y - yb) / STEP) % 2 == 0 else 0), 0.9, fill=1, stroke=0)
-            annotate(i, letter, finger)
-        i += 1 if (dur != 0.5 or i + 1 >= len(notes) or notes[i + 1][2] != 0.5) else (j - i)
-    # Barlines every 4 beats.
+            i = j
+            continue
+        lo, hi = heads(x, kind, payload, dur)
+        if dur < 4:
+            up = (lo + hi) / 2 < yb + 2 * LINE
+            sx = x + 2.7 if up else x - 2.7
+            end = (hi + 20) if up else (lo - 20)
+            c.line(sx, hi if up else lo, sx, end)
+            if dur <= 0.5:
+                draw_flag(c, sx, end, up)
+        if dur in (1.5, 3):
+            c.setFillColor(INK)
+            c.circle(x + 6.5, hi + (STEP if round((hi - yb) / STEP) % 2 == 0 else 0),
+                     0.9, fill=1, stroke=0)
+        annotate(i, kind, payload, label)
+        i += 1
+    # Barlines every bar.
     beat = 0.0
-    for letter, octave, dur, _ in notes:
+    for _, _, dur, _ in evs:
         beat += dur
-        if abs(beat % 4) < 1e-9 and beat < total:
+        if abs(beat % bar_beats) < 1e-9 and beat < total:
             bx = left + width * (beat / total)
             c.setLineWidth(0.55); c.setStrokeColor(HexColor("#222222"))
             c.line(bx, yb, bx, yb + 4 * LINE)

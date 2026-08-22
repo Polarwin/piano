@@ -6,6 +6,7 @@ one bar of silence between exercises.
 """
 import os, subprocess
 import musiclib
+from lesson_day_one import as_events
 
 OUT = "/srv/files/piano/lessons" if os.path.isdir("/srv/files/piano/lessons") and os.access("/srv/files/piano/lessons", os.W_OK) else os.path.dirname(os.path.abspath(__file__))
 
@@ -41,10 +42,20 @@ HCB_LH = [("C",3,4,5)] * 8
 REST = []
 
 def to_midi(notes):
-    return [(musiclib.midi_note(f"{l}{o}"), d) for l, o, d, _ in notes]
+    """v1 tuples or v2 events -> (midi | [midi, ...] | None, dur) list."""
+    out = []
+    for kind, payload, dur, _ in as_events(notes):
+        if kind == "rest":
+            out.append((None, dur))
+        elif kind == "chord":
+            out.append(([musiclib.midi_note(f"{l}{a}{o}") for l, a, o in payload], dur))
+        else:
+            l, a, o = payload
+            out.append((musiclib.midi_note(f"{l}{a}{o}"), dur))
+    return out
 
 def chunk(notes, beats=4):
-    """Split (midi, dur) list into bars of `beats`; ([notes], dur) for lh=None means rh."""
+    """Split (group, dur) list into bars of `beats`."""
     bars, cur, total = [], [], 0.0
     for n, d in notes:
         cur.append((n, d)); total += d
@@ -53,23 +64,35 @@ def chunk(notes, beats=4):
     assert not cur, f"last bar incomplete ({total} beats)"
     return bars
 
-def chunk_lh(notes, beats=4):
-    return [[([n], d) for n, d in bar] for bar in chunk(notes, beats)]
+def chunk_hand(notes, beats=4):
+    """Wrap single notes/rests as groups so both hands share one shape."""
+    return [[(n if isinstance(n, (list, tuple)) or n is None else [n], d)
+             for n, d in bar] for bar in chunk(notes, beats)]
 
 def lesson_score(title, exercises, bpm=66):
-    """exercises: [(rh_notes, lh_notes), ...]; None = silent hand."""
-    bars = []
-    for k, (rh, lh) in enumerate(exercises):
+    """exercises: [(rh_notes, lh_notes, meta), ...]; None = silent hand.
+    meta may carry time=(num, den), bpm, dynamic."""
+    metas = [ex[2] for ex in exercises if len(ex) > 2 and ex[2]]
+    time = tuple(metas[0]["time"]) if metas and metas[0].get("time") else (4, 4)
+    bpm = int(metas[0]["bpm"]) if metas and metas[0].get("bpm") else bpm
+    beats = time[0] * 4 // time[1]
+    bars, sections = [], []
+    for k, ex in enumerate(exercises):
+        rh, lh = ex[0], ex[1]
+        meta = ex[2] if len(ex) > 2 else {}
         if k:
             bars.append({"rh": [], "lh": []})          # one bar of silence
-        rh_bars = chunk(to_midi(rh)) if rh else []
-        lh_bars = chunk_lh(to_midi(lh)) if lh else []
+        if meta.get("dynamic"):
+            sections.append({"bar": len(bars), "name": "", "dynamic": meta["dynamic"]})
+        rh_bars = chunk_hand(to_midi(rh), beats) if rh else []
+        lh_bars = chunk_hand(to_midi(lh), beats) if lh else []
         n = max(len(rh_bars), len(lh_bars))
         for i in range(n):
             bars.append({"rh": rh_bars[i] if i < len(rh_bars) else [],
                          "lh": lh_bars[i] if i < len(lh_bars) else []})
-    return {"title": title, "bpm": bpm, "rit": False, "time": (4, 4),
-            "sections": [{"bar": 0, "name": "", "dynamic": "mp"}], "bars": bars}
+    return {"title": title, "bpm": bpm, "rit": False, "time": time,
+            "sections": sections or [{"bar": 0, "name": "", "dynamic": "mp"}],
+            "bars": bars}
 
 def render(title, exercises, out_name):
     score = lesson_score(title, exercises)

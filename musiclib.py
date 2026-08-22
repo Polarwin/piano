@@ -276,9 +276,13 @@ def render_audio(score, path, sr=32000):
         for hand, vscale in [("rh", 1.0), ("lh", 0.74)]:
             beat = 0.0
             for ev in m[hand]:
-                group, dur = (ev if hand == "lh" else ([ev[0]], ev[1]))
+                group, dur = ev
+                if not isinstance(group, (list, tuple)):
+                    group = [group]
                 vel = int((vel0 + swell) * vscale)
                 for n in group:
+                    if n is None:
+                        continue          # rest
                     add_note(starts[bar] + beat * spb, n, dur, vel, hand, bpms[bar])
                 beat += dur
     peak = max(max(mix), -min(mix), 0.001)

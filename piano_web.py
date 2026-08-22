@@ -75,10 +75,19 @@ def prune_jobs():
         _,job_id=finished.pop(0)
         JOBS.pop(job_id,None)
 
+def load_levels():
+    """Suggested level per famous-library piece: /srv/files/piano/library/levels.json."""
+    try:
+        return json.loads((PUBLISHED / "library" / "levels.json").read_text())
+    except Exception:
+        return {}
+
 def library():
     groups = {}
     lesson_stems = set()
-    folders = list(dict.fromkeys((OUTPUT, PUBLISHED, PUBLISHED / "lessons")))
+    lib_stems = set()
+    levels = load_levels()
+    folders = list(dict.fromkeys((OUTPUT, PUBLISHED, PUBLISHED / "lessons", PUBLISHED / "library")))
     for folder in folders:
         if not folder.is_dir():
             continue
@@ -87,12 +96,19 @@ def library():
                 groups.setdefault(p.stem, {})[p.suffix.lower().lstrip(".")] = p
                 if folder.name == "lessons":
                     lesson_stems.add(p.stem)
+                if folder.name == "library":
+                    lib_stems.add(p.stem)
     rows=[]
     for stem, files in groups.items():
-        rows.append({"name": stem.replace("_", " "), "stem": stem,
-                     "lesson": stem in lesson_stems,
-                     "files": {k: f"files/{p.name}" for k,p in sorted(files.items())},
-                     "mtime": max(p.stat().st_mtime for p in files.values())})
+        row = {"name": stem.replace("_", " "), "stem": stem,
+               "lesson": stem in lesson_stems,
+               "lib": stem in lib_stems,
+               "files": {k: f"files/{p.name}" for k,p in sorted(files.items())},
+               "mtime": max(p.stat().st_mtime for p in files.values())}
+        if stem in levels:
+            row["level"] = str(levels[stem].get("level", ""))
+            row["note"] = str(levels[stem].get("note", ""))
+        rows.append(row)
     rows.sort(key=lambda row: row["mtime"],reverse=True)
     for row in rows: row.pop("mtime")
     return rows
@@ -227,7 +243,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/files/"):
             name=Path(path).name
             if Path(name).suffix.lower() not in MEDIA_SUFFIXES: return self.send_error(404)
-            candidates=[OUTPUT/name, PUBLISHED/name, PUBLISHED/"lessons"/name]
+            candidates=[OUTPUT/name, PUBLISHED/name, PUBLISHED/"lessons"/name, PUBLISHED/"library"/name]
             p=next((x for x in candidates if x.is_file()),None)
             if not p: return self.send_error(404)
             self.send_response(200); self.send_header("Content-Type",mimetypes.guess_type(p.name)[0] or "application/octet-stream")

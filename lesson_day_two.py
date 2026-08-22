@@ -11,16 +11,42 @@ from reportlab.lib.colors import HexColor
 
 import musiclib
 from musiclib import draw_notehead, draw_ledger, draw_flag, staff_y, register_fonts, LINE, STEP
-from lesson_day_one import Doc, MARGIN, INK, GRAY, ACCENT, W, H
+from lesson_day_one import (Doc, MARGIN, INK, GRAY, ACCENT, W, H,
+                            as_events, note_ys, draw_rest, draw_acc, event_name,
+                            split_bars)
 
 OUT = "/srv/files/piano/lessons" if os.path.isdir("/srv/files/piano/lessons") and os.access("/srv/files/piano/lessons", os.W_OK) else os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------------------------------
 # grand-staff exercise: both hands, beats aligned
 # --------------------------------------------------------------------------
-def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True):
-    """rh/lh: [(letter, octave, dur, finger), ...]; 4/4, equal total beats."""
-    doc.need(175)
+def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
+                   time=(4, 4), tempo=None, dynamic=None):
+    """rh/lh: v1 tuples or v2 events (see as_events); equal total beats."""
+    rh, lh = as_events(rh), as_events(lh)
+    bar_beats = time[0] * 4 // time[1]
+    if max(len(rh), len(lh)) > 12:
+        rbars = split_bars(rh, bar_beats)
+        lbars = split_bars(lh, bar_beats)
+        chunks, cur_r, cur_l, count = [], [], [], 0
+        for k, rbar in enumerate(rbars):
+            lbar = lbars[k] if k < len(lbars) else []
+            add = max(len(rbar), len(lbar))
+            if cur_r and count + add > 12:
+                chunks.append((cur_r, cur_l))
+                cur_r, cur_l, count = [], [], 0
+            cur_r += rbar
+            cur_l += lbar
+            count += add
+        if cur_r:
+            chunks.append((cur_r, cur_l))
+        if len(chunks) > 1:
+            for k, (rc, lc) in enumerate(chunks):
+                grand_exercise(doc, rc, lc, show_names, show_fingers, time,
+                               tempo if k == 0 else None, dynamic if k == 0 else None)
+                doc.gap(6)
+            return
+    doc.need(182)
     c = doc.c
     x0, x1 = MARGIN + 30, W - MARGIN
     yt = doc.y - 52                      # treble bottom line (clear of text + finger row)
@@ -35,7 +61,12 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True):
     c.drawString(x0 + 2, yb + 3, "\U0001D122")
     c.setFont("Serif", 12)
     for yy in (yt, yb):
-        c.drawString(x0 + 30, yy + 12, "4"); c.drawString(x0 + 30, yy + 2, "4")
+        c.drawString(x0 + 30, yy + 12, str(time[0]))
+        c.drawString(x0 + 30, yy + 2, str(time[1]))
+    if tempo or dynamic:
+        c.setFont("SerifItalic", 9); c.setFillColor(INK)
+        c.drawString(x0 + 48, yt + 4 * LINE + 15,
+                     "  ".join(m for m in (tempo, dynamic) if m))
     c.setLineWidth(0.9)
     c.line(x0, yb, x0, yt + 4 * LINE)
     left = x0 + 48
@@ -43,49 +74,64 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True):
     total = sum(d for _, _, d, _ in rh)
     lowest = yb  # lowest ink, for advancing the cursor afterwards
 
-    def draw_hand(notes, bottom, clef):
+    def draw_hand(evs, bottom, clef):
         nonlocal lowest
         beat = 0.0
-        for letter, octave, dur, finger in notes:
+        for kind, payload, dur, label in evs:
             x = left + width * (beat / total) + (width / total) * 0.35
-            y = staff_y(letter, octave, bottom, clef)
-            lowest = min(lowest, y)
             c.setLineWidth(0.9); c.setStrokeColor(INK)
-            draw_ledger(c, x, y, bottom)
-            draw_notehead(c, x, y, hollow=(dur >= 2))
-            up = y < bottom + 2 * LINE
+            if kind == "rest":
+                draw_rest(c, x, bottom, dur)
+                beat += dur
+                continue
+            tones = payload if isinstance(payload, list) else [payload]
+            ys = [staff_y(l, o, bottom, clef) for l, _, o in tones]
+            lowest = min(lowest, min(ys))
+            prev_y = None
+            for (l, a, o), y in zip(sorted(tones, key=lambda t: staff_y(t[0], t[2], bottom, clef)),
+                                    sorted(ys)):
+                hx = x
+                if prev_y is not None and y - prev_y < STEP + 0.1:
+                    hx += 5.5            # adjacent steps: stagger the head
+                draw_ledger(c, hx, y, bottom)
+                draw_notehead(c, hx, y, hollow=(dur >= 2))
+                draw_acc(c, hx, y, a)
+                prev_y = y
+            lo, hi = min(ys), max(ys)
+            up = (lo + hi) / 2 < bottom + 2 * LINE
             if dur < 4:
                 sx = x + 2.7 if up else x - 2.7
-                end = y + (20 if up else -20)
-                c.line(sx, y, sx, end)
+                end = (hi + 20) if up else (lo - 20)
+                c.line(sx, hi if up else lo, sx, end)
                 if dur <= 0.5:
                     draw_flag(c, sx, end, up)
             if dur in (1.5, 3):
                 c.setFillColor(INK)
-                c.circle(x + 6.5, y + (STEP if round((y - bottom) / STEP) % 2 == 0 else 0), 0.9, fill=1, stroke=0)
-            if show_fingers and finger:
+                c.circle(x + 6.5, hi + (STEP if round((hi - bottom) / STEP) % 2 == 0 else 0),
+                         0.9, fill=1, stroke=0)
+            if show_fingers and label:
                 c.setFont("Serif", 8.5); c.setFillColor(ACCENT)
-                c.drawCentredString(x, bottom + 4 * LINE + 8, str(finger))
+                c.drawCentredString(x, bottom + 4 * LINE + 8, str(label))
             if show_names:
                 # Name under the notehead; for down-stems shift left of the stem.
                 c.setFont("Serif", 8.5); c.setFillColor(GRAY)
                 if dur < 4 and not up:
-                    c.drawRightString(x - 6, y - 8, letter)
+                    c.drawRightString(x - 6, lo - 8, event_name(kind, payload))
                 else:
-                    c.drawCentredString(x, y - 8, letter)
+                    c.drawCentredString(x, lo - 8, event_name(kind, payload))
             beat += dur
 
     draw_hand(rh, yt, "treble")
     draw_hand(lh, yb, "bass")
 
-    # barlines across both staves every 4 beats, plus final double bar
-    beat = 4.0
+    # barlines across both staves, plus final double bar
+    beat = float(bar_beats)
     c.setStrokeColor(HexColor("#222222"))
-    while beat < total:
+    while beat < total - 1e-9:
         bx = left + width * (beat / total)
         c.setLineWidth(0.55)
         c.line(bx, yb, bx, yt + 4 * LINE)
-        beat += 4
+        beat += bar_beats
     c.setLineWidth(0.55); c.line(x1, yb, x1, yt + 4 * LINE)
     c.setLineWidth(2.2); c.line(x1 - 3.5, yb, x1 - 3.5, yt + 4 * LINE)
     doc.y = min(yb - 28, lowest - 22)

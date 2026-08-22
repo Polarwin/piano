@@ -19,7 +19,27 @@ Prompt-to-piano-music app: describe a piece in plain words, get sheet music
   port 8930 (`/etc/nginx/conf.d/piano-files.conf`) **proxy** to 127.0.0.1:8943.
 - Pieces are published to `/srv/files/piano` (served by the app under
   `files/...`); compose.py and the older generators also write there when the
-  directory exists (fallback: project folder).
+  directory exists (fallback: project folder). Subfolders: `lessons/`
+  (generated course lessons + `progress.json`) and `library/` (public-domain
+  famous sheet music + `levels.json` with suggested course month per piece,
+  shown in the app's "Sheet music library" section).
+
+## Lessons (Six Months to Piano)
+
+- `lesson_gen.py` — prompt-to-lesson CLI (PDF + MP3). Lesson JSON v2 supports
+  time signatures ([2,4]/[3,4]/[4,4], one per lesson), rests `["R", dur]`,
+  genuine chords `{"chord": [["C",3],...], "dur": d, "fingers": "1-3-5"}`,
+  accidentals (letter may carry #/b), and per-exercise tempo/dynamic/bpm marks.
+  Engravers: `lesson_day_one.exercise()` (single staff) and
+  `lesson_day_two.grand_exercise()` — both accept v1 4-tuples and v2 events,
+  and wrap long exercises onto multiple systems automatically.
+  `lesson_audio.py` builds the play-along score (one time signature per lesson).
+- `make_curriculum.py` — batch-generates the course; resumable (skips days
+  whose PDF exists), `--force` regenerates, `--dry-run` shows the plan.
+  Curriculum + practice lengths/levels documented in `CURRICULUM.md`.
+  Month One (Days 1-30) lives in `/srv/files/piano/lessons/`.
+- After editing `web/index.html`, always `node --check` the extracted script —
+  a single missing brace once blanked the whole page.
 
 ## Usage (CLI)
 
