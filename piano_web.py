@@ -16,6 +16,22 @@ LOCK = threading.Lock()
 MAX_JOBS = 100
 MEDIA_SUFFIXES = {".pdf", ".mid", ".mp3", ".m4a", ".wav", ".json"}
 
+def progress_file():
+    d = PUBLISHED / "lessons"
+    return (d if d.is_dir() else OUTPUT) / "progress.json"
+
+def load_progress():
+    try:
+        return json.loads(progress_file().read_text())
+    except Exception:
+        return {}
+
+def save_progress(p):
+    f = progress_file()
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(p, ensure_ascii=False))
+    tmp.replace(f)
+
 def job_event(job_id, message):
     print(f"piano job {job_id[:8]}: {message}", flush=True)
 
@@ -80,6 +96,33 @@ def library():
     rows.sort(key=lambda row: row["mtime"],reverse=True)
     for row in rows: row.pop("mtime")
     return rows
+
+def canonical_user(p, user):
+    """Case-insensitive identity: 'justin' and 'Justin' are the same person.
+    Keeps the capitalization first used on the board."""
+    for entry in p.values():
+        for u in entry:
+            if u.lower() == user.lower():
+                return u
+    return user
+
+def find_existing_lesson(title, prompt):
+    """A lesson matching the requested title (or clearly named in the prompt)."""
+    def norm(s):
+        return re.sub(r"[^a-z0-9]+", "", s.lower())
+    rows = [r for r in library() if r.get("lesson")]
+    t = norm(title or "")
+    for r in rows:
+        for n in (norm(r["name"]), norm(r["stem"])):
+            if len(t) >= 4 and n and (t == n or t in n or n in t):
+                return r
+    if not t:
+        p = norm(prompt)
+        for r in rows:
+            n = norm(r["name"])
+            if len(p) >= 4 and n and (n in p or p in n):
+                return r
+    return None
 
 def run_job(job_id, request):
     kind = request.get("kind", "piece")
@@ -173,6 +216,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path=unquote(urlparse(self.path).path)
         if path == "/api/library": return self.send_json({"pieces":library()})
+        if path == "/api/progress": return self.send_json(load_progress())
         if path.startswith("/api/jobs/"):
             with LOCK:
                 stored=JOBS.get(path.rsplit("/",1)[-1])
@@ -200,6 +244,29 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers(); self.wfile.write(body)
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/progress":
+            try:
+                size=int(self.headers.get("Content-Length","0"))
+                if size>4000: return self.send_json({"error":"Request too large"},413)
+                req=json.loads(self.rfile.read(size))
+                user=str(req.get("user","")).strip()
+                stem=str(req.get("stem","")).strip()
+                done=bool(req.get("done"))
+                if not 1<=len(user)<=24: raise ValueError("Name must be 1–24 characters.")
+                if not re.fullmatch(r"[\w \-]{1,80}", stem): raise ValueError("Bad lesson name.")
+                if not (progress_file().parent / f"{stem}.pdf").is_file():
+                    raise ValueError("Unknown lesson.")
+                with LOCK:
+                    p=load_progress()
+                    user=canonical_user(p,user)
+                    entry=p.setdefault(stem,{})
+                    if done: entry[user]=time.time()
+                    else: entry.pop(user,None)
+                    if not entry: p.pop(stem,None)
+                    save_progress(p)
+                return self.send_json(p)
+            except (ValueError,TypeError,json.JSONDecodeError) as exc:
+                return self.send_json({"error":str(exc)},400)
         if path not in ("/api/compose", "/api/lesson"): return self.send_error(404)
         try:
             size=int(self.headers.get("Content-Length","0"))
@@ -215,6 +282,14 @@ class Handler(SimpleHTTPRequestHandler):
                 kind="piece"
                 bars=int(req.get("bars",32))
                 if bars not in (16,24,32,48,64): raise ValueError("Choose a supported length.")
+            clean={"kind":kind,"prompt":prompt,"title":str(req.get("title", ""))[:100],
+                   "bars":bars,"audio":bool(req.get("audio",True)),"composer":composer}
+            if kind == "lesson":
+                existing = find_existing_lesson(clean["title"], prompt)
+                if existing:
+                    return self.send_json({"status":"exists",
+                        "message":f'"{existing["name"]}" already exists — find it in the list above.',
+                        "lesson":existing})
             with LOCK:
                 if any(j["status"] in ("queued","composing") for j in JOBS.values()):
                     return self.send_json({"error":"Another composition is in progress. Please wait."},429)
@@ -225,8 +300,6 @@ class Handler(SimpleHTTPRequestHandler):
                               "created":time.time(),"progress":2,"stage":"Queued","composer":composer,
                               "bars":bars,"diagnostic":"The request was accepted and the worker thread is starting."}
             job_event(job_id, f"accepted kind={kind} composer={composer} bars={bars}")
-            clean={"kind":kind,"prompt":prompt,"title":str(req.get("title", ""))[:100],
-                   "bars":bars,"audio":bool(req.get("audio",True)),"composer":composer}
             threading.Thread(target=run_job,args=(job_id,clean),daemon=True).start()
             return self.send_json(JOBS[job_id],202)
         except (ValueError,TypeError,json.JSONDecodeError) as exc:
