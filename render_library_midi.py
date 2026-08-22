@@ -19,12 +19,15 @@ import wave
 LIBRARY = Path("/srv/files/piano/library")
 PIANO_SOLOS = (
     "Bach_Minuet_in_G",
+    "Bach_Little_Prelude_BWV939",
     "Beethoven_Fur_Elise",
     "Beethoven_Moonlight_Sonata",
     "Beethoven_Ode_to_Joy",
     "Beethoven_Symphony5",
     "Brahms_Lullaby",
     "Brahms_Waltz_Op39_No15",
+    "Burgmuller_Arabesque_Op100_No2",
+    "Clementi_Sonatina_Op36_No1",
     "Debussy_Clair_de_Lune",
     "Pachelbel_Canon_in_D",
     "Schumann_Traumerei",
