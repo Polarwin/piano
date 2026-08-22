@@ -2,7 +2,7 @@
 """Small LAN web application for the prompt-to-piano composer."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 from urllib.request import build_opener, HTTPRedirectHandler, Request
 import ipaddress, json, mimetypes, os, re, socket, subprocess, tempfile, threading, time, uuid
 import musiclib
@@ -232,6 +232,8 @@ def run_job(job_id, request):
             with LOCK:
                 JOBS[job_id].update(message="Finalizing your files…",progress=94,
                                     stage="Final checks",diagnostic="Generation and rendering completed; checking output files.")
+        matched_line = next((line.strip() for line in command_output.splitlines()
+                             if line.startswith("matched reviewed score:")), "")
         made={}
         for ext in exts:
             p=Path(f"{base}.{ext}")
@@ -239,10 +241,12 @@ def run_job(job_id, request):
         with LOCK:
             JOBS[job_id].update(status="complete",
                                 message=("Your lesson is ready." if kind == "lesson" else
+                                         "A matching reviewed score was found." if matched_line else
                                          "Your piano solo is ready." if kind == "song" else "Your piece is ready."),
                                 files=made,
                                 progress=100,stage="Complete",finished=time.time(),
-                                diagnostic=f"Created {len(made)} file format(s): {', '.join(sorted(made)) or 'none'}.")
+                                diagnostic=((matched_line + "\n") if matched_line else "")
+                                           + f"Created {len(made)} file format(s): {', '.join(sorted(made)) or 'none'}.")
         job_event(job_id, f"complete files={','.join(sorted(made)) or 'none'}")
     except subprocess.TimeoutExpired:
         with LOCK: JOBS[job_id].update(status="error", message="Composition timed out. Please try fewer measures.",
@@ -363,7 +367,13 @@ class Handler(SimpleHTTPRequestHandler):
             p=next((x for x in candidates if x.is_file()),None)
             if not p: return self.send_error(404)
             self.send_response(200); self.send_header("Content-Type",mimetypes.guess_type(p.name)[0] or "application/octet-stream")
-            self.send_header("Content-Length",str(p.stat().st_size)); self.send_header("Content-Disposition",f'inline; filename="{p.name}"')
+            # http.server encodes header values as Latin-1. Use an ASCII
+            # fallback plus RFC 5987 for Korean and other Unicode filenames.
+            fallback = re.sub(r'[^A-Za-z0-9._-]+', '_', p.name).strip('_') or "download"
+            disposition = (f'inline; filename="{fallback}"; '
+                           f"filename*=UTF-8''{quote(p.name, safe='')}")
+            self.send_header("Content-Length",str(p.stat().st_size))
+            self.send_header("Content-Disposition",disposition)
             self.end_headers()
             with p.open("rb") as f:
                 while chunk:=f.read(1024*256): self.wfile.write(chunk)

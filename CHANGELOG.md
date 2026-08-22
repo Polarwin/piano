@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-22 — Reviewed-score matching before transcription
+
+- Song conversion now compares several ten-second windows with local-library
+  MIDI while allowing transposed performances during matching.
+- Strong title and musical matches publish the reviewed PDF, MIDI and MP3
+  instead of rebuilding a lossy generic arrangement.
+- When the local library has no confident match, conversion searches Mutopia
+  for explicitly licensed MIDI/PDF candidates and applies the same confidence
+  checks before using one.
+- Low-confidence results still fall back to Basic Pitch transcription and the
+  existing two-hand arranger; `--no-score-match` disables lookup explicitly.
+- Job details now identify when a reviewed score was matched and report its
+  confidence, musical similarity and detected pitch shift.
+
 Notable changes to Piano Studio are recorded here.
 
 ## 2026-08-22

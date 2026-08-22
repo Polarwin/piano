@@ -14,12 +14,17 @@ editable first draft rather than a note-perfect transcription.
 import argparse
 from collections import defaultdict
 import copy
+import html
 import math
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 import os
+import unicodedata
+from urllib.parse import quote_plus, urljoin
+from urllib.request import Request, urlopen
 
 import musiclib
 from render_library_midi import parse_midi, tick_converter
@@ -30,6 +35,8 @@ AUDIO_EXTENSIONS = {
     ".webm", ".mp4", ".mkv", ".mov",
 }
 DEFAULT_BASIC_PITCH = Path("/home/justin/.local/share/piano-basic-pitch/bin/basic-pitch")
+LIBRARY = Path("/srv/files/piano/library")
+MUTOPIA = "https://www.mutopiaproject.org"
 ROOT_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
 CHORDS = {
     name + suffix: (pc, (pc + third) % 12, (pc + 7) % 12)
@@ -43,6 +50,182 @@ KEY_SIGS = {
     "F#m": (3, True), "E": (4, False), "C#m": (4, True),
     "B": (5, False), "G#m": (5, True), "Eb": (-3, False), "Cm": (-3, True),
 }
+
+TITLE_STOPWORDS = {
+    "performed", "performance", "official", "video", "audio", "live",
+    "remaster", "remastered", "piano", "solo", "the", "by", "hd",
+}
+
+
+def title_words(value):
+    """Comparable title words, independent of accents and upload decoration."""
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    words = re.findall(r"[a-z0-9]+", value.lower())
+    return {word for word in words if len(word) > 1 and word not in TITLE_STOPWORDS}
+
+
+def title_similarity(left, right):
+    a, b = title_words(left), title_words(right)
+    if not a or not b:
+        return 0.0, 0
+    shared = len(a & b)
+    # Upload names often append performer/channel text. Reward a candidate
+    # whose identifying words are contained in that longer source name.
+    return max(shared / len(a | b), shared / min(len(a), len(b))), shared
+
+
+def chroma_profile(notes, start=0.0, length=None):
+    values = [0.0] * 12
+    finish = float("inf") if length is None else start + length
+    for note_start, note_end, note, velocity in notes:
+        overlap = max(0.0, min(finish, note_end) - max(start, note_start))
+        if overlap:
+            values[note % 12] += overlap * (.35 + velocity / 127)
+    norm = math.sqrt(sum(value * value for value in values))
+    return [value / norm for value in values] if norm else values
+
+
+def musical_similarity(source_notes, candidate_notes):
+    """Compare multiple short windows, allowing a transposed performance."""
+    source_end = max(end for _, end, _, _ in source_notes)
+    candidate_end = max(end for _, end, _, _ in candidate_notes)
+    positions = (0.04, .35, .68)
+    source_profiles = [chroma_profile(source_notes, source_end * part, 10)
+                       for part in positions]
+    candidate_profiles = [chroma_profile(candidate_notes, candidate_end * part, 10)
+                          for part in positions]
+    best = (0.0, 0)
+    for shift in range(12):
+        scores = []
+        for source, candidate in zip(source_profiles, candidate_profiles):
+            shifted = [candidate[(pc - shift) % 12] for pc in range(12)]
+            scores.append(sum(a * b for a, b in zip(source, shifted)))
+        score = sum(scores) / len(scores)
+        if score > best[0]:
+            best = score, shift
+    signed_shift = best[1] if best[1] <= 6 else best[1] - 12
+    return best[0], signed_shift
+
+
+def candidate_notes(path):
+    notes, _ = midi_notes(path)
+    return notes
+
+
+def local_score_candidates():
+    if not LIBRARY.is_dir():
+        return []
+    candidates = []
+    for midi in LIBRARY.glob("*.mid"):
+        pdf, mp3 = midi.with_suffix(".pdf"), midi.with_suffix(".mp3")
+        if pdf.is_file():
+            candidates.append({"title": midi.stem.replace("_", " "),
+                               "midi": midi, "pdf": pdf,
+                               "mp3": mp3 if mp3.is_file() else None,
+                               "source": "local music library"})
+    return candidates
+
+
+def mutopia_candidates(title, directory):
+    """Fetch at most three explicitly licensed Mutopia MIDI/PDF candidates."""
+    words = list(title_words(title))
+    if len(words) < 2:
+        return []
+    # Short queries survive performer/channel text better than the full upload name.
+    ordered = sorted(words, key=lambda word: (-len(word), word))
+    queries = ([" ".join(ordered[:4]), " ".join(ordered[:2])]
+               + [word for word in ordered if len(word) >= 4])
+    ids = []
+    headers = {"User-Agent": "PianoStudio/1.0 score matcher"}
+    for query in queries:
+        url = f"{MUTOPIA}/cgibin/make-table.cgi?searchingfor={quote_plus(query)}"
+        try:
+            page = urlopen(Request(url, headers=headers), timeout=10).read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        for piece_id in re.findall(r"piece-info\.cgi\?id=(\d+)", page):
+            if piece_id not in ids:
+                ids.append(piece_id)
+        if ids:
+            break
+    results = []
+    for piece_id in ids[:3]:
+        page_url = f"{MUTOPIA}/cgibin/piece-info.cgi?id={piece_id}"
+        try:
+            page = urlopen(Request(page_url, headers=headers), timeout=10).read().decode("utf-8", "replace")
+            heading = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
+            found_title = re.sub(r"<[^>]+>", " ", heading.group(1)) if heading else title
+            found_title = html.unescape(" ".join(found_title.split()))
+            midi_url = re.search(r'href="([^"]+\.(?:mid|midi))"', page, re.I)
+            pdf_url = re.search(r'href="([^"]+-a4\.pdf)"', page, re.I)
+            if not midi_url or not pdf_url:
+                continue
+            midi = directory / f"mutopia-{piece_id}.mid"
+            pdf = directory / f"mutopia-{piece_id}.pdf"
+            for remote, target in ((midi_url.group(1), midi), (pdf_url.group(1), pdf)):
+                data = urlopen(Request(urljoin(page_url, remote), headers=headers), timeout=15).read()
+                target.write_bytes(data)
+            results.append({"title": found_title, "midi": midi, "pdf": pdf,
+                            "mp3": None, "source": page_url})
+        except (OSError, ValueError):
+            continue
+    return results
+
+
+def find_matching_score(title, source_notes, directory):
+    """Return a reviewed score only when name and musical evidence agree."""
+    ranked = []
+    for item in local_score_candidates():
+        name_score, shared = title_similarity(title, item["title"])
+        if shared < 2:
+            continue
+        try:
+            music_score, shift = musical_similarity(source_notes, candidate_notes(item["midi"]))
+        except (OSError, ValueError):
+            continue
+        confidence = .58 * name_score + .42 * music_score
+        ranked.append((confidence, name_score, music_score, shift, item))
+    if not ranked or max(row[0] for row in ranked) < .57:
+        for item in mutopia_candidates(title, directory):
+            name_score, shared = title_similarity(title, item["title"])
+            if shared < 2:
+                continue
+            try:
+                music_score, shift = musical_similarity(source_notes, candidate_notes(item["midi"]))
+            except (OSError, ValueError):
+                continue
+            confidence = .58 * name_score + .42 * music_score
+            ranked.append((confidence, name_score, music_score, shift, item))
+    if not ranked:
+        return None
+    confidence, name_score, music_score, shift, item = max(ranked, key=lambda row: row[0])
+    # Two shared title words plus musical agreement avoids matching generic names.
+    if confidence < .57 or music_score < .64:
+        return None
+    item.update(confidence=confidence, name_score=name_score,
+                music_score=music_score, pitch_shift=shift)
+    return item
+
+
+def publish_matching_score(match, output):
+    """Publish the authoritative notation and MIDI, rendering audio if needed."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    midi_out, pdf_out, mp3_out = (output.with_suffix(ext) for ext in (".mid", ".pdf", ".mp3"))
+    shutil.copy2(match["midi"], midi_out)
+    shutil.copy2(match["pdf"], pdf_out)
+    if match.get("mp3"):
+        shutil.copy2(match["mp3"], mp3_out)
+    else:
+        from render_library_midi import render
+        temp_stem = "matched_score"
+        temp_midi = output.parent / f"{temp_stem}.mid"
+        shutil.copy2(match["midi"], temp_midi)
+        try:
+            rendered, _, _ = render(temp_stem, output.parent)
+            rendered.replace(mp3_out)
+        finally:
+            temp_midi.unlink(missing_ok=True)
+    return [pdf_out, midi_out, mp3_out]
 
 
 def audio_to_midi(source, directory):
@@ -253,6 +436,8 @@ def main():
                         default="flowing")
     parser.add_argument("--melody-register", choices=("auto", "lower", "original"),
                         default="auto", help="octave placement for the right-hand melody")
+    parser.add_argument("--no-score-match", action="store_true",
+                        help="skip local-library and Mutopia score matching")
     args = parser.parse_args()
     if args.max_bars is not None and not 8 <= args.max_bars <= 256:
         parser.error("--max-bars must be between 8 and 256")
@@ -271,6 +456,17 @@ def main():
         elif source.suffix.lower() not in {".mid", ".midi"}:
             parser.error("input must be MIDI or a supported audio file")
         notes, metadata = midi_notes(midi)
+        if from_audio and not args.no_score_match:
+            match = find_matching_score(title, notes, Path(temp))
+            if match:
+                made = publish_matching_score(match, output)
+                print(f"matched reviewed score: {match['title']} from {match['source']} "
+                      f"(confidence={match['confidence']:.3f}, "
+                      f"music={match['music_score']:.3f}, "
+                      f"detected_shift={match['pitch_shift']:+d})")
+                for path in made:
+                    print("created:", path)
+                return
         if from_audio:
             # Basic Pitch writes a generic 4/4 header; it is not a measurement
             # of the source meter, so let the rhythm estimator decide instead.
