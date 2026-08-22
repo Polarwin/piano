@@ -41,7 +41,7 @@ def vlq(data, pos):
             return value, pos
 
 
-def parse_midi(path):
+def parse_midi(path, include_metadata=False):
     data = path.read_bytes()
     if data[:4] != b"MThd":
         raise ValueError(f"{path}: not a Standard MIDI file")
@@ -51,6 +51,7 @@ def parse_midi(path):
         raise ValueError(f"{path}: SMPTE timing is not supported")
     pos = 8 + header_len
     tempos = [(0, 500000)]
+    time_signatures = []
     notes = []
     for track_no in range(tracks):
         if data[pos:pos + 4] != b"MTrk":
@@ -78,6 +79,8 @@ def parse_midi(path):
                 payload = chunk[p:p + length]; p += length
                 if kind == 0x51 and length == 3:
                     tempos.append((tick, int.from_bytes(payload, "big")))
+                elif kind == 0x58 and length >= 2:
+                    time_signatures.append((tick, payload[0], 2 ** payload[1]))
                 continue
             if status in (0xf0, 0xf7):
                 length, p = vlq(chunk, p)
@@ -99,7 +102,8 @@ def parse_midi(path):
                     notes.append((start, tick, a, velocity))
         for (_, note), starts in active.items():
             notes.extend((start, tick, note, velocity) for start, velocity in starts)
-    return division, sorted(set(tempos)), notes
+    result = (division, sorted(set(tempos)), notes)
+    return result + ({"time_signatures": sorted(set(time_signatures))},) if include_metadata else result
 
 
 def tick_converter(division, tempos):

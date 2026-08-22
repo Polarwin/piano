@@ -41,6 +41,9 @@ Notable changes to Piano Studio are recorded here.
   automatic publication in Your AI Compositions.
 - Added public or intranet shared-link input with redirect validation,
   supported-extension checks, dangerous-address blocking, and a 100 MB limit.
+- Song conversion now detects embedded MIDI time signatures, estimates meter
+  from rhythmic accents when metadata is absent, and derives arrangement
+  length from the source duration with a 64-measure safety cap.
 
 ### Documentation
 

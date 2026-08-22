@@ -153,8 +153,8 @@ def run_job(job_id, request):
         source = Path(request["source"])
         cmd = [os.sys.executable, str(ROOT / "song_to_piano.py"), str(source),
                "--out", str(base), "--title", title or source.stem.replace("_", " ").title(),
-               "--time", request["time"], "--accompaniment", request["accompaniment"],
-               "--max-bars", str(request["max_bars"])]
+               "--time", request["time"], "--accompaniment", request["accompaniment"]]
+        if request.get("max_bars"): cmd += ["--max-bars", str(request["max_bars"])]
         if request.get("bpm"): cmd += ["--bpm", str(request["bpm"])]
         exts = ("pdf", "mid", "mp3", "wav")
         expected = 240
@@ -383,13 +383,14 @@ class Handler(SimpleHTTPRequestHandler):
                 source_name = upload["name"] if upload else Path(urlparse(song_url).path).name
                 suffix = Path(source_name).suffix.lower()
                 if suffix not in SONG_SUFFIXES: raise ValueError("Use MIDI, MP3, WAV, M4A, WebM, MP4, MKV, FLAC, OGG, AAC, or MOV.")
-                meter = fields.get("time", "4/4")
+                meter = fields.get("time", "auto")
                 accompaniment = fields.get("accompaniment", "flowing")
-                if meter not in ("2/4", "3/4", "4/4"): raise ValueError("Choose a supported time signature.")
+                if meter not in ("auto", "2/4", "3/4", "4/4"): raise ValueError("Choose a supported time signature.")
                 if accompaniment not in ("flowing", "alberti", "waltz", "chords"): raise ValueError("Choose a supported accompaniment.")
-                if accompaniment == "waltz" and meter != "3/4": raise ValueError("Waltz accompaniment requires 3/4 time.")
-                max_bars = int(fields.get("max_bars", "32"))
-                if max_bars not in (16, 24, 32, 48, 64): raise ValueError("Choose a supported length.")
+                if accompaniment == "waltz" and meter not in ("auto", "3/4"): raise ValueError("Waltz accompaniment requires 3/4 time.")
+                max_text = fields.get("max_bars", "auto")
+                max_bars = None if max_text == "auto" else int(max_text)
+                if max_bars is not None and max_bars not in (16, 24, 32, 48, 64): raise ValueError("Choose a supported length.")
                 bpm_text = fields.get("bpm", "").strip()
                 bpm = int(bpm_text) if bpm_text else None
                 if bpm is not None and not 40 <= bpm <= 160: raise ValueError("Tempo must be 40–160 BPM.")

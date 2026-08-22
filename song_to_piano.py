@@ -63,13 +63,13 @@ def audio_to_midi(source, directory):
 
 
 def midi_notes(path):
-    division, tempos, notes = parse_midi(path)
+    division, tempos, notes, metadata = parse_midi(path, include_metadata=True)
     convert = tick_converter(division, tempos)
     converted = [(convert(start), convert(end), note, velocity)
                  for start, end, note, velocity in notes if end > start]
     if not converted:
         raise ValueError("The MIDI file contains no playable notes")
-    return converted
+    return converted, metadata
 
 
 def estimate_bpm(notes):
@@ -84,6 +84,35 @@ def estimate_bpm(notes):
     while beat > 1.0:
         beat /= 2
     return max(40, min(120, round(60 / beat)))
+
+
+def estimate_time_signature(notes, bpm, metadata, accompaniment):
+    """Prefer embedded MIDI meter; otherwise compare 3- and 4-beat accents."""
+    declared = metadata.get("time_signatures", [])
+    for _, numerator, denominator in declared:
+        if (numerator, denominator) in ((2, 4), (3, 4), (4, 4)):
+            return numerator, denominator, "MIDI metadata"
+    if accompaniment == "waltz":
+        return 3, 4, "waltz accompaniment"
+    seconds_per_beat = 60 / bpm
+    onsets = [(start / seconds_per_beat, velocity) for start, _, _, velocity in notes]
+
+    def accent_score(beats):
+        best = 0.0
+        for phase in range(beats):
+            down, other = [], []
+            for beat, velocity in onsets:
+                nearest = round(beat)
+                if abs(beat - nearest) > .22:
+                    continue
+                (down if (nearest - phase) % beats == 0 else other).append(velocity)
+            if down and other:
+                best = max(best, sum(down) / len(down) - sum(other) / len(other))
+        return best
+    three, four = accent_score(3), accent_score(4)
+    if three > max(3.0, four * 1.15):
+        return 3, 4, "rhythmic accent estimate"
+    return 4, 4, "conservative rhythm estimate"
 
 
 def transpose_note(note, shift):
@@ -147,7 +176,8 @@ def arrange(notes, title, bpm, time, subdivision, max_bars, accompaniment):
     seconds_per_beat = 60 / bpm
     bar_seconds = beats_per_bar * seconds_per_beat
     end_time = max(end for _, end, _, _ in notes)
-    bar_count = max(8, min(max_bars, math.ceil(end_time / bar_seconds)))
+    natural_bars = math.ceil(end_time / bar_seconds)
+    bar_count = max(8, min(max_bars or 64, natural_bars))
     step_beats = 1 / subdivision
     steps_per_bar = round(beats_per_bar / step_beats)
     last_note = 60
@@ -188,10 +218,11 @@ def main():
     parser.add_argument("--out", type=Path, help="output basename")
     parser.add_argument("--title", help="printed title")
     parser.add_argument("--bpm", type=int, help="override detected tempo")
-    parser.add_argument("--time", choices=("2/4", "3/4", "4/4"), default="4/4")
+    parser.add_argument("--time", choices=("auto", "2/4", "3/4", "4/4"), default="auto")
     parser.add_argument("--subdivision", type=int, choices=(1, 2), default=2,
                         help="melody samples per beat (default: 2)")
-    parser.add_argument("--max-bars", type=int, default=64)
+    parser.add_argument("--max-bars", type=int,
+                        help="truncate at this many bars (default: detect, capped at 64)")
     parser.add_argument("--accompaniment", choices=("flowing", "alberti", "waltz", "chords"),
                         default="flowing")
     args = parser.parse_args()
@@ -200,8 +231,7 @@ def main():
         parser.error(f"file not found: {source}")
     title = args.title or source.stem.replace("_", " ").title()
     output = args.out or Path(source.stem + "_Piano_Solo")
-    time = tuple(map(int, args.time.split("/")))
-    if args.accompaniment == "waltz" and time != (3, 4):
+    if args.accompaniment == "waltz" and args.time not in ("auto", "3/4"):
         parser.error("waltz accompaniment requires --time 3/4")
     with tempfile.TemporaryDirectory() as temp:
         midi = source
@@ -209,13 +239,21 @@ def main():
             midi = audio_to_midi(source, Path(temp))
         elif source.suffix.lower() not in {".mid", ".midi"}:
             parser.error("input must be MIDI or a supported audio file")
-        notes = midi_notes(midi)
+        notes, metadata = midi_notes(midi)
         bpm = args.bpm or estimate_bpm(notes)
+        if args.time == "auto":
+            numerator, denominator, time_source = estimate_time_signature(
+                notes, bpm, metadata, args.accompaniment)
+            time = (numerator, denominator)
+        else:
+            time = tuple(map(int, args.time.split("/")))
+            time_source = "manual override"
         data = arrange(notes, title, bpm, time, args.subdivision,
                        args.max_bars, args.accompaniment)
         score = musiclib.build_score(copy.deepcopy(data))
         made = musiclib.render_all(score, str(output), audio=True)
-    print(f"arranged {len(data['bars'])} bars at {bpm} BPM")
+    print(f"arranged {len(data['bars'])} bars in {time[0]}/{time[1]} "
+          f"({time_source}) at {bpm} BPM")
     for path in made:
         print("created:", path)
 
