@@ -29,6 +29,7 @@ def CH(names, dur, fingers=None):
 # --- chord shorthands (left hand, root position) ---------------------------
 C_ = ("C3 E3 G3", "5-3-1"); G_ = ("G2 B2 D3", "5-3-1"); F_ = ("F2 A2 C3", "5-3-1")
 AM = ("A2 C3 E3", "5-3-1"); EM = ("E2 G2 B2", "5-3-1"); DM = ("D3 F#3 A3", "5-3-1")
+EMAJ = ("E2 G#2 B2", "5-3-1")  # E major: the dominant of A minor (G#)
 
 def LH(chords, dur):
     """Whole/dotted-half chord per bar: LH([C_, G_], 4)."""
@@ -199,6 +200,137 @@ MELODIES = {
                N("G5",1,5),N("F#5",1,4),N("E5",1,3),N("D5",1,2),
                N("C5",1,1),N("B4",1,3),N("A4",1,2),N("G4",1,1)],
         "lh": None},
+
+    # ---- Month Two ---------------------------------------------------------
+    # F major scale, one octave up and down (with Bb; RH fingering 1234 1234)
+    "f_major_scale": {
+        "time": (4, 4), "bpm": 60,
+        "rh": [N("F4",1,1),N("G4",1,2),N("A4",1,3),N("Bb4",1,4),
+               N("C5",1,1),N("D5",1,2),N("E5",1,3),N("F5",1,4),
+               N("F5",1,4),N("E5",1,3),N("D5",1,2),N("C5",1,1),
+               N("Bb4",1,4),N("A4",1,3),N("G4",1,2),N("F4",1,1)],
+        "lh": None},
+    # F major scale, left hand, one octave up and down (with Bb;
+    # standard LH fingering 5 4 3 2 1 3 2 1 ascending)
+    "f_major_scale_lh": {
+        "time": (4, 4), "bpm": 60,
+        "rh": None,
+        "lh": [N("F2",1,5),N("G2",1,4),N("A2",1,3),N("Bb2",1,2),
+               N("C3",1,1),N("D3",1,3),N("E3",1,2),N("F3",1,1),
+               N("F3",1,1),N("E3",1,2),N("D3",1,3),N("C3",1,1),
+               N("Bb2",1,2),N("A2",1,3),N("G2",1,4),N("F2",1,5)]},
+    # Traditional — Lightly Row (G major). Faithful to the traditional tune
+    # (the German "Hänschen klein", same melody): 5-3-3 | 4-2-2 opening,
+    # checked against the Wikipedia transcription; note values doubled into
+    # 4/4 so the lesson needs no new meter. D major chord on bars 4 and 6
+    # gives a D7 colour under the melody's C (dominant of G).
+    "lightly_row": {
+        "time": (4, 4), "bpm": 72,
+        "rh": [N("D5",1,5),N("B4",1,3),N("B4",2,3),
+               N("C5",1,4),N("A4",1,2),N("A4",2,2),
+               N("D5",1,5),N("B4",1,3),N("B4",2,3),
+               N("C5",1,4),N("A4",1,2),N("A4",2,2),
+               N("G4",1,1),N("A4",1,2),N("B4",1,3),N("C5",1,4),
+               N("D5",1,5),N("D5",1,5),N("D5",2,5),
+               N("G4",1,1),N("B4",1,3),N("D5",1,5),N("D5",1,5),
+               N("G4",4,1)],
+        "lh": LH([G_, C_, G_, DM, G_, DM, G_, G_], 4)},
+    # Traditional — When the Saints Go Marching In (C, chord accompaniment)
+    "saints": {
+        "time": (4, 4), "bpm": 76,
+        "rh": [N("C4",1,1),N("E4",1,3),N("F4",1,4),N("G4",1,5),
+               N("C4",1,1),N("E4",1,3),N("F4",1,4),N("G4",1,5),
+               N("C4",1,1),N("E4",1,3),N("F4",1,4),N("G4",1,5),
+               N("E4",1,3),N("C4",1,1),N("E4",1,3),N("D4",1,2),
+               N("C4",2,1),N("E4",1,3),N("G4",1,5),
+               N("E4",1,3),N("G4",1,5),N("G4",1,5),N("F4",1,4),
+               N("E4",1,3),N("F4",1,4),N("E4",1,3),N("D4",1,2),
+               N("C4",4,1)],
+        "lh": LH([C_, C_, C_, G_, C_, C_, G_, C_], 4)},
+    # Traditional — Scarborough Fair (E minor, 3/4). Melody follows the
+    # Simon & Garfunkel letter-note transcription (C natural instead of the
+    # Dorian C#), one full verse, 12 bars. The dotted quarter + eighth figure
+    # from Day 47 opens almost every bar. Two five-finger positions: low
+    # (E4-B4) for lines 1 and 4, high (A4-E5) for lines 2 and 3.
+    "scarborough_fair": {
+        "time": (3, 4), "bpm": 56,
+        "rh": [N("E4",1.5,1),N("E4",0.5,1),N("B4",1,5),
+               N("B4",1,5),N("F#4",1.5,2),N("G4",0.5,3),
+               N("F#4",1,2),N("E4",2,1),
+               N("B4",1.5,2),N("D5",0.5,4),N("E5",1,5),
+               N("D5",1.5,4),N("B4",0.5,2),N("C5",1,3),
+               N("A4",1,1),N("B4",2,2),
+               N("E5",1.5,5),N("E5",0.5,5),N("D5",1,4),
+               N("B4",1.5,2),N("B4",0.5,2),N("A4",1,1),
+               N("G4",1,3),N("F#4",2,2),
+               N("E4",1.5,1),N("B4",0.5,5),N("A4",1,4),
+               N("G4",1.5,3),N("F#4",0.5,2),N("E4",1,1),
+               N("D4",1,2),N("E4",2,1)],
+        "lh": LH([EM, EM, DM, EM, G_, G_, EM, G_, DM, EM, EM, EM], 3)},
+    # Traditional — House of the Rising Sun (A minor, arpeggio accompaniment)
+    "rising_sun": {
+        "time": (3, 4), "bpm": 60,
+        "rh": [N("A4",1,1),N("C5",1,3),N("E5",1,5),
+               N("E5",1,5),N("D5",1,4),N("C5",1,3),
+               N("D5",1,4),N("C5",1,3),N("A4",1,1),
+               N("A4",2,1),N("C5",1,3),
+               N("A4",1,1),N("C5",1,3),N("E5",1,5),
+               N("E5",1,5),N("D5",1,4),N("C5",1,3),
+               N("B4",1,2),N("E5",1,5),N("B4",1,2),
+               N("A4",3,1)],
+        "lh": [N("A2",0.5,5),N("C3",0.5,3),N("E3",0.5,1),N("A3",0.5,1),N("E3",0.5,2),N("C3",0.5,4),
+               N("C3",0.5,5),N("E3",0.5,3),N("G3",0.5,1),N("C4",0.5,1),N("G3",0.5,2),N("E3",0.5,4),
+               N("D3",0.5,5),N("F3",0.5,3),N("A3",0.5,1),N("D4",0.5,1),N("A3",0.5,2),N("F3",0.5,4),
+               N("F2",0.5,5),N("A2",0.5,3),N("C3",0.5,1),N("F3",0.5,1),N("C3",0.5,2),N("A2",0.5,4),
+               N("A2",0.5,5),N("C3",0.5,3),N("E3",0.5,1),N("A3",0.5,1),N("E3",0.5,2),N("C3",0.5,4),
+               N("C3",0.5,5),N("E3",0.5,3),N("G3",0.5,1),N("C4",0.5,1),N("G3",0.5,2),N("E3",0.5,4),
+               N("E2",0.5,5),N("B2",0.5,2),N("E3",0.5,1),N("G3",0.5,1),N("E3",0.5,2),N("B2",0.5,4),
+               N("A2",0.5,5),N("C3",0.5,3),N("E3",0.5,1),N("A3",0.5,1),N("E3",0.5,2),N("C3",0.5,4)]},
+    # Traditional — Yankee Doodle (C major, two-hand piece)
+    "yankee_doodle": {
+        "time": (4, 4), "bpm": 88,
+        "rh": [N("C4",1,1),N("C4",1,1),N("D4",1,2),N("E4",1,3),
+               N("C4",1,1),N("E4",1,3),N("D4",2,2),
+               N("C4",1,1),N("C4",1,1),N("D4",1,2),N("E4",1,3),
+               N("F4",2,4),N("E4",1,3),N("D4",1,2),
+               N("G4",1,5),N("A4",1,4),N("B4",1,3),N("C5",1,5),
+               N("C5",1,5),N("B4",1,4),N("A4",1,3),N("G4",1,2),
+               N("F4",1,4),N("E4",1,3),N("D4",1,2),N("G4",1,5),
+               N("C4",4,1)],
+        "lh": LH([C_, G_, C_, G_, C_, G_, G_, C_], 4)},
+    # Traditional — Greensleeves (A minor, 3/4) — Month Two recital piece.
+    # Full first verse, 12 bars; melody follows the familiar tune (checked
+    # against letter-note transcriptions): A C D | E F E | D B G phrases,
+    # the G# "pointing home" line, and the F#-G#-A ending. No pickup bar:
+    # the opening A is written as a dotted quarter on beat 1, which keeps
+    # the 6/8 lilt as a dotted quarter + eighth figure (Day 47's rhythm).
+    # Waltz (um-pah-pah) left hand; E major chord is the true dominant.
+    "greensleeves": {
+        "time": (3, 4), "bpm": 60,
+        "rh": [N("A4",1.5,1),N("C5",0.5,3),N("D5",1,4),
+               N("E5",1.5,5),N("F5",0.5,5),N("E5",1,5),
+               N("D5",1,4),N("B4",0.5,2),N("G4",1.5,1),
+               N("A4",1.5,1),N("B4",0.5,2),N("C5",1,3),
+               N("A4",1,1),N("A4",1.5,1),N("G#4",0.5,2),
+               N("A4",1,1),N("B4",0.5,2),N("G#4",0.5,1),N("E4",1,3),
+               N("A4",1.5,1),N("C5",0.5,3),N("D5",1,4),
+               N("E5",1.5,5),N("F5",0.5,5),N("E5",1,5),
+               N("D5",1,4),N("B4",0.5,2),N("G4",1.5,1),
+               N("A4",1.5,1),N("B4",0.5,2),N("C5",1,3),
+               N("B4",1,2),N("A4",1.5,1),N("G#4",0.5,2),
+               N("F#4",0.5,3),N("G#4",0.5,2),N("A4",2,1)],
+        "lh": [N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("G2",1,5),CH("B2 D3",1,"3-1"),CH("B2 D3",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("E2",1,5),CH("G#2 B2",1,"3-1"),CH("G#2 B2",1,"3-1"),
+               N("E2",1,5),CH("G#2 B2",1,"3-1"),CH("G#2 B2",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("G2",1,5),CH("B2 D3",1,"3-1"),CH("B2 D3",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1"),
+               N("E2",1,5),CH("G#2 B2",1,"3-1"),CH("G#2 B2",1,"3-1"),
+               N("A2",1,5),CH("C3 E3",1,"3-1"),CH("C3 E3",1,"3-1")]},
 }
 
 def check():

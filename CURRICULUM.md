@@ -108,3 +108,95 @@ Bonus: **Broken Chords Basics** — extra broken-chord drills · 8 bars · level
 - Legato/staccato, dynamics, phrasing, intro to the sustain pedal
 - Recognizable simplified classics: Ode to Joy, Für Elise, Minuet in G,
   Pachelbel's Canon, a Brahms waltz
+
+---
+
+# Month Two (Days 31–60)
+
+**Entry skills** (end of Month One): five-finger positions both hands, basic
+treble/bass reading, note values through eighth notes, rests, 4/4 and 3/4,
+chords C F G Am Dm Em (blocked and broken), C and G major scales,
+legato/staccato, dynamics, phrasing basics, pedal introduction.
+
+**Goal**: by Day 60 the learner reads and plays a short two-hand piece in C,
+G or F major — or in A minor, the relative minor of C — with steady pulse,
+basic phrasing, chord or broken-chord accompaniment, and sensible fingering.
+The recital piece is Greensleeves in A minor: it reuses C major's key
+signature, consolidates the month's dotted rhythms, 3/4 waltz accompaniment,
+balance and phrasing, and adds one new reading skill, the G♯ accidental (the
+raised 7th that points home to A). The month strengthens Month One rather
+than jumping to intermediate level.
+
+**Engine limits**: one time signature per lesson ([2,4]/[3,4]/[4,4]), no ties
+across barlines and no pickup bars — Day 56 teaches the *concept* of ties in
+words while exercises use long single notes.
+
+## Week 5 — Reading fluency and F major
+
+| Day | Lesson | Melody / exercise | Length | Level | Practice |
+|-----|--------|-------------------|--------|-------|----------|
+| 31 | Welcome to Month Two | Mixed Month One warm-up tour: positions, chords, scales | 12–16 bars · ~2 min | 3 | 20 min |
+| 32 | Landmark Notes | Reading via treble G, middle C, bass F instead of naming every note | 8–12 bars · ~1½ min | 3 | 20 min |
+| 33 | Steps and Skips | Intervals of 2nds and 3rds; reading by shape | 8–12 bars · ~1½ min | 3 | 20 min |
+| 34 | Fourths and Fifths | Larger intervals; recognizing chord shapes on the staff | 8–12 bars · ~1½ min | 3 | 20 min |
+| 35 | The F Major Scale | **F major scale** with B♭ (reviewed notes), one octave both hands separately | 8 bars · ~1½ min | 4 | 20 min |
+| 36 | Lightly Row | **Lightly Row** (G major) with chord accompaniment — steps/skips in context | 8 bars · ~1½ min | 4 | 20 min |
+| 37 | Quiet Review Day | Light consolidation: sight-reading habit (look ahead, don't stop) | 8 bars · ~1 min | 2 | 15 min |
+
+## Week 6 — Chords, inversions and accompaniment
+
+| Day | Lesson | Melody / exercise | Length | Level | Practice |
+|-----|--------|-------------------|--------|-------|----------|
+| 38 | Chord Checkup and I–IV–V | C, F, G review; optional Roman-numeral labels I, IV, V | 8–12 bars · ~1½ min | 3 | 20 min |
+| 39 | Chord Inversions | C major root/first/second inversion; smoother left hand | 8–12 bars · ~1½ min | 4 | 20 min |
+| 40 | Inversions in G and F | Same idea in the month's other keys | 8–12 bars · ~1½ min | 4 | 20 min |
+| 41 | When the Saints | **When the Saints Go Marching In** with C–F–G chords | 8 bars · ~2 min | 4 | 20 min |
+| 42 | Alberti Bass | Broken-chord pattern low-high-middle-high under a slow melody | 8 bars · ~1½ min | 4 | 20 min |
+| 43 | Melody Above the Waves | Balance: melody louder than accompaniment (waltz pattern recall) | 8–12 bars · ~1½ min | 4 | 20 min |
+| 44 | Play Day: Make Your Own | Guided improvisation over the C–F–G chords; no wrong notes in C position | 8 bars · ~1 min | 2 | 15 min |
+
+## Week 7 — Checkpoint and independence
+
+| Day | Lesson | Melody / exercise | Length | Level | Practice |
+|-----|--------|-------------------|--------|-------|----------|
+| 45 | Month Two Checkpoint | Mixed review: F scale, inversions, Alberti, sight-reading self-test | 12–16 bars · ~2 min | 4 | 20 min |
+| 46 | Steady Bass, Singing Top | Hand independence: moving melody over held chords, longer phrases | 8–12 bars · ~2 min | 4 | 20 min |
+| 47 | The Long-Short Rhythm | Dotted quarter + eighth figure; feeling the swing | 8 bars · ~1½ min | 4 | 20 min |
+| 48 | Scarborough Fair | **Scarborough Fair** (E minor, 3/4) — full verse, dotted quarter–eighth rhythm throughout | 12 bars · ~2 min | 4 | 20 min |
+| 49 | Ear Training Day | Major vs. minor, high vs. low, same/different — listen then play | 8 bars · ~1 min | 2 | 15 min |
+| 50 | Sight-Reading Practice | Strategy day: skim, count, slow, don't stop; two short new exercises | 8 bars · ~1 min | 3 | 20 min |
+| 51 | Play Day: Chord Colors | Creative day: Am–Dm–Em palette, make a sad/happy loop | 8 bars · ~1 min | 2 | 15 min |
+
+## Week 8 — Expression and the recital piece
+
+| Day | Lesson | Melody / exercise | Length | Level | Practice |
+|-----|--------|-------------------|--------|-------|----------|
+| 52 | Pedal with Care | Pedal changes on chord changes; listening for smears | 8 bars · ~1½ min | 4 | 20 min |
+| 53 | House of the Rising Sun | **House of the Rising Sun** (A minor) — arpeggio accompaniment | 8 bars · ~2 min | 4 | 20 min |
+| 54 | Yankee Doodle | **Yankee Doodle** — a complete two-hand piece in C | 8 bars · ~2 min | 4 | 20 min |
+| 55 | Beyond the Staff | Reading one or two ledger lines above and below each staff | 8–12 bars · ~1½ min | 4 | 20 min |
+| 56 | About Ties | Concept day: how printed music holds notes over barlines with ties (exercises use long single notes) | 8 bars · ~1½ min | 3 | 15 min |
+| 57 | Play Day: Canon Jam | Improvise a gentle melody over the Pachelbel chord loop | 8 bars · ~1½ min | 2 | 15 min |
+| 58 | Quiet Review Day | Mixed warm-ups; choose and polish a favourite piece | 8–12 bars · ~1½ min | 3 | 15 min |
+
+## Days 59–60 — Review and recital
+
+| Day | Lesson | Melody / exercise | Length | Level | Practice |
+|-----|--------|-------------------|--------|-------|----------|
+| 59 | Month Two Review | Warm-up tour: F scale hands separately, inversions, Alberti, dotted rhythms | 12–16 bars · ~2 min | 4 | 20 min |
+| 60 | Month Two Recital: Greensleeves | **Greensleeves** (A minor, 3/4) — full first verse with G♯, waltz accompaniment | 12 bars · ~2 min | 5 | 25 min |
+
+## End-of-Month-Two outcomes
+
+- Reads treble and bass via landmarks and intervals, without naming every note
+- Plays C, G and F major scales (with F♯ and B♭) one octave, hands separately
+- Uses primary chords and inversions in C, G, F; knows I–IV–V informally
+- Accompanies with held chords, broken chords, Alberti bass and waltz patterns
+- Handles dotted quarter–eighth rhythms; understands ties conceptually
+- Plays short two-hand pieces with balance and phrasing; recital: Greensleeves
+
+**Review criteria**: four correct relaxed repetitions; steady counting aloud;
+start at ~50–60 BPM and increase only when comfortable; stop at pain or
+persistent tension. Play Days 44, 51 and 57 are deliberately light and must
+not block progress — optional challenge material is marked as such in the
+lesson text.
