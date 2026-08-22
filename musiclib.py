@@ -168,6 +168,8 @@ def bpm_map(score):
     """Per-bar tempo: constant, with a ritardando over the final three bars."""
     n = len(score["bars"])
     bpm = score["bpm"]
+    if score.get("rit") is False:
+        return [float(bpm)] * n
     out = [float(bpm)] * n
     for k, f in enumerate((0.85, 0.7, 0.55)):
         if n >= 8:

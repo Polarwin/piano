@@ -61,16 +61,20 @@ def prune_jobs():
 
 def library():
     groups = {}
-    folders = list(dict.fromkeys((OUTPUT, PUBLISHED)))
+    lesson_stems = set()
+    folders = list(dict.fromkeys((OUTPUT, PUBLISHED, PUBLISHED / "lessons")))
     for folder in folders:
         if not folder.is_dir():
             continue
         for p in folder.iterdir():
             if p.is_file() and p.suffix.lower() in MEDIA_SUFFIXES - {".json"}:
                 groups.setdefault(p.stem, {})[p.suffix.lower().lstrip(".")] = p
+                if folder.name == "lessons":
+                    lesson_stems.add(p.stem)
     rows=[]
     for stem, files in groups.items():
         rows.append({"name": stem.replace("_", " "), "stem": stem,
+                     "lesson": stem in lesson_stems,
                      "files": {k: f"files/{p.name}" for k,p in sorted(files.items())},
                      "mtime": max(p.stat().st_mtime for p in files.values())})
     rows.sort(key=lambda row: row["mtime"],reverse=True)
@@ -78,23 +82,36 @@ def library():
     return rows
 
 def run_job(job_id, request):
+    kind = request.get("kind", "piece")
     title = request.get("title", "").strip()
-    stem = safe_name(title or f"Piano_Piece_{job_id[:6]}")
-    base = OUTPUT / stem
-    cmd = [os.sys.executable, str(ROOT / "compose.py"), request["prompt"],
-           "--bars", str(request["bars"]), "--out", str(base), "--keep-json",
-           "--composer", request["composer"]]
-    if title: cmd += ["--title", title]
-    if not request.get("audio", True): cmd.append("--no-audio")
+    if kind == "lesson":
+        stem = safe_name(title or f"Piano_Lesson_{job_id[:6]}")
+        base = PUBLISHED / "lessons" / stem
+        cmd = [os.sys.executable, str(ROOT / "lesson_gen.py"), request["prompt"],
+               "--out", str(base), "--composer", request["composer"]]
+        if title: cmd += ["--title", title]
+        exts = ("pdf", "mp3")
+        expected = 150
+        working = f"{request['composer'].title()} is writing your lesson…"
+    else:
+        stem = safe_name(title or f"Piano_Piece_{job_id[:6]}")
+        base = OUTPUT / stem
+        cmd = [os.sys.executable, str(ROOT / "compose.py"), request["prompt"],
+               "--bars", str(request["bars"]), "--out", str(base), "--keep-json",
+               "--composer", request["composer"]]
+        if title: cmd += ["--title", title]
+        if not request.get("audio", True): cmd.append("--no-audio")
+        exts = ("pdf", "mid", "mp3", "wav", "json")
+        expected = (120 if request["composer"] == "kimi" else 210) + request["bars"] * 2
+        working = f"{request['composer'].title()} is writing melody and harmony…"
     with LOCK:
         JOBS[job_id].update(status="composing",
-                            message=f"{request['composer'].title()} is writing melody and harmony…",
+                            message=working,
                             progress=8, stage="AI composition",
-                            diagnostic="The selected AI is creating and validating the score JSON.")
-    job_event(job_id, f"started composer={request['composer']} bars={request['bars']} audio={request.get('audio', True)}")
+                            diagnostic="The selected AI is creating and validating the content.")
+    job_event(job_id, f"started kind={kind} composer={request['composer']}")
     try:
         started=time.time()
-        expected=(120 if request["composer"] == "kimi" else 210) + request["bars"] * 2
         with tempfile.TemporaryFile(mode="w+") as log:
             proc=subprocess.Popen(cmd,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,text=True)
             while proc.poll() is None:
@@ -109,6 +126,9 @@ def run_job(job_id, request):
                 time.sleep(2)
             log.seek(0); command_output=log.read()
         if proc.returncode:
+            if kind == "lesson":
+                raise RuntimeError(f"{request['composer'].title()} exited with status {proc.returncode}. "
+                                   "Please try again or simplify the request.")
             job_event(job_id, f"AI command exited status={proc.returncode}; starting fallback")
             with LOCK:
                 JOBS[job_id].update(message="The AI composer failed; using the built-in composer…",
@@ -119,13 +139,15 @@ def run_job(job_id, request):
         else:
             with LOCK:
                 JOBS[job_id].update(message="Finalizing your files…",progress=94,
-                                    stage="Final checks",diagnostic="Score generation and rendering completed; checking output files.")
+                                    stage="Final checks",diagnostic="Generation and rendering completed; checking output files.")
         made={}
-        for ext in ("pdf","mid","mp3","wav","json"):
+        for ext in exts:
             p=Path(f"{base}.{ext}")
             if p.exists(): made[ext]=f"files/{p.name}"
         with LOCK:
-            JOBS[job_id].update(status="complete", message="Your piece is ready.", files=made,
+            JOBS[job_id].update(status="complete",
+                                message="Your lesson is ready." if kind == "lesson" else "Your piece is ready.",
+                                files=made,
                                 progress=100,stage="Complete",finished=time.time(),
                                 diagnostic=f"Created {len(made)} file format(s): {', '.join(sorted(made)) or 'none'}.")
         job_event(job_id, f"complete files={','.join(sorted(made)) or 'none'}")
@@ -161,7 +183,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/files/"):
             name=Path(path).name
             if Path(name).suffix.lower() not in MEDIA_SUFFIXES: return self.send_error(404)
-            candidates=[OUTPUT/name, PUBLISHED/name]
+            candidates=[OUTPUT/name, PUBLISHED/name, PUBLISHED/"lessons"/name]
             p=next((x for x in candidates if x.is_file()),None)
             if not p: return self.send_error(404)
             self.send_response(200); self.send_header("Content-Type",mimetypes.guess_type(p.name)[0] or "application/octet-stream")
@@ -177,28 +199,34 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-cache")
         self.end_headers(); self.wfile.write(body)
     def do_POST(self):
-        if urlparse(self.path).path != "/api/compose": return self.send_error(404)
+        path = urlparse(self.path).path
+        if path not in ("/api/compose", "/api/lesson"): return self.send_error(404)
         try:
             size=int(self.headers.get("Content-Length","0"))
             if size>16000: return self.send_json({"error":"Request too large"},413)
             req=json.loads(self.rfile.read(size))
             prompt=str(req.get("prompt","")).strip()
-            bars=int(req.get("bars",32))
             composer=str(req.get("composer","kimi")).lower()
-            if not 5<=len(prompt)<=1000: raise ValueError("Describe the piece in 5–1000 characters.")
-            if bars not in (16,24,32,48,64): raise ValueError("Choose a supported length.")
+            if not 5<=len(prompt)<=1000: raise ValueError("Describe it in 5–1000 characters.")
             if composer not in ("kimi","codex"): raise ValueError("Choose Kimi or Codex.")
+            if path == "/api/lesson":
+                kind="lesson"; bars=None
+            else:
+                kind="piece"
+                bars=int(req.get("bars",32))
+                if bars not in (16,24,32,48,64): raise ValueError("Choose a supported length.")
             with LOCK:
                 if any(j["status"] in ("queued","composing") for j in JOBS.values()):
                     return self.send_json({"error":"Another composition is in progress. Please wait."},429)
                 prune_jobs()
                 job_id=uuid.uuid4().hex
-                JOBS[job_id]={"id":job_id,"status":"queued","message":"Preparing your composition…",
+                JOBS[job_id]={"id":job_id,"status":"queued",
+                              "message":"Preparing your lesson…" if kind=="lesson" else "Preparing your composition…",
                               "created":time.time(),"progress":2,"stage":"Queued","composer":composer,
                               "bars":bars,"diagnostic":"The request was accepted and the worker thread is starting."}
-            job_event(job_id, f"accepted composer={composer} bars={bars}")
-            clean={"prompt":prompt,"title":str(req.get("title", ""))[:100],"bars":bars,
-                   "audio":bool(req.get("audio",True)),"composer":composer}
+            job_event(job_id, f"accepted kind={kind} composer={composer} bars={bars}")
+            clean={"kind":kind,"prompt":prompt,"title":str(req.get("title", ""))[:100],
+                   "bars":bars,"audio":bool(req.get("audio",True)),"composer":composer}
             threading.Thread(target=run_job,args=(job_id,clean),daemon=True).start()
             return self.send_json(JOBS[job_id],202)
         except (ValueError,TypeError,json.JSONDecodeError) as exc:
