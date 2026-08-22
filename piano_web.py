@@ -3,7 +3,8 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-import json, mimetypes, os, re, subprocess, tempfile, threading, time, uuid
+from urllib.request import build_opener, HTTPRedirectHandler, Request
+import ipaddress, json, mimetypes, os, re, socket, subprocess, tempfile, threading, time, uuid
 import musiclib
 
 ROOT = Path(__file__).resolve().parent
@@ -15,6 +16,9 @@ JOBS = {}
 LOCK = threading.Lock()
 MAX_JOBS = 100
 MEDIA_SUFFIXES = {".pdf", ".mid", ".mp3", ".m4a", ".wav", ".json"}
+SONG_SUFFIXES = {".mid", ".midi", ".mp3", ".wav", ".m4a", ".aac", ".flac",
+                 ".ogg", ".webm", ".mp4", ".mkv", ".mov"}
+MAX_SONG_UPLOAD = 100 * 1024 * 1024
 
 def progress_file():
     d = PUBLISHED / "lessons"
@@ -143,7 +147,19 @@ def find_existing_lesson(title, prompt):
 def run_job(job_id, request):
     kind = request.get("kind", "piece")
     title = request.get("title", "").strip()
-    if kind == "lesson":
+    if kind == "song":
+        stem = safe_name(title or f"Piano_Solo_{job_id[:6]}")
+        base = OUTPUT / stem
+        source = Path(request["source"])
+        cmd = [os.sys.executable, str(ROOT / "song_to_piano.py"), str(source),
+               "--out", str(base), "--title", title or source.stem.replace("_", " ").title(),
+               "--time", request["time"], "--accompaniment", request["accompaniment"],
+               "--max-bars", str(request["max_bars"])]
+        if request.get("bpm"): cmd += ["--bpm", str(request["bpm"])]
+        exts = ("pdf", "mid", "mp3", "wav")
+        expected = 240
+        working = "Transcribing the song and arranging it for two hands…"
+    elif kind == "lesson":
         stem = safe_name(title or f"Piano_Lesson_{job_id[:6]}")
         base = PUBLISHED / "lessons" / stem
         cmd = [os.sys.executable, str(ROOT / "lesson_gen.py"), request["prompt"],
@@ -166,9 +182,10 @@ def run_job(job_id, request):
     with LOCK:
         JOBS[job_id].update(status="composing",
                             message=working,
-                            progress=8, stage="AI composition",
-                            diagnostic="The selected AI is creating and validating the content.")
-    job_event(job_id, f"started kind={kind} composer={request['composer']}")
+                            progress=8, stage="Song transcription" if kind == "song" else "AI composition",
+                            diagnostic=("Extracting the melody, inferring chords, and preparing a two-hand arrangement."
+                                        if kind == "song" else "The selected AI is creating and validating the content."))
+    job_event(job_id, f"started kind={kind} composer={request.get('composer','transcriber')}")
     try:
         started=time.time()
         with tempfile.TemporaryFile(mode="w+") as log:
@@ -178,13 +195,17 @@ def run_job(job_id, request):
                 progress=min(88,8+int(80*elapsed/expected))
                 with LOCK:
                     JOBS[job_id].update(progress=progress,
-                        diagnostic=f"{request['composer'].title()} is still working; {int(elapsed)} seconds elapsed. Longer pieces and audio take more time.")
+                        diagnostic=(f"Song conversion is still working; {int(elapsed)} seconds elapsed."
+                                    if kind == "song" else f"{request['composer'].title()} is still working; {int(elapsed)} seconds elapsed. Longer pieces and audio take more time."))
                 if elapsed >= 720:
                     proc.kill(); proc.wait()
                     raise subprocess.TimeoutExpired(cmd,720)
                 time.sleep(2)
             log.seek(0); command_output=log.read()
         if proc.returncode:
+            if kind == "song":
+                detail = command_output.strip().splitlines()[-1] if command_output.strip() else "No converter details were returned."
+                raise RuntimeError(f"Song conversion exited with status {proc.returncode}: {detail[:240]}")
             if kind == "lesson":
                 raise RuntimeError(f"{request['composer'].title()} exited with status {proc.returncode}. "
                                    "Please try again or simplify the request.")
@@ -205,7 +226,8 @@ def run_job(job_id, request):
             if p.exists(): made[ext]=f"files/{p.name}"
         with LOCK:
             JOBS[job_id].update(status="complete",
-                                message="Your lesson is ready." if kind == "lesson" else "Your piece is ready.",
+                                message=("Your lesson is ready." if kind == "lesson" else
+                                         "Your piano solo is ready." if kind == "song" else "Your piece is ready."),
                                 files=made,
                                 progress=100,stage="Complete",finished=time.time(),
                                 diagnostic=f"Created {len(made)} file format(s): {', '.join(sorted(made)) or 'none'}.")
@@ -220,6 +242,71 @@ def run_job(job_id, request):
                                       stage="Error",finished=time.time(),
                                       diagnostic=f"{type(exc).__name__}: {str(exc)[:300]}")
         job_event(job_id, f"error {type(exc).__name__}: {str(exc)[:160]}")
+    finally:
+        if kind == "song":
+            try: Path(request["source"]).unlink(missing_ok=True)
+            except OSError: pass
+
+def parse_multipart(handler, size):
+    """Parse the small, controlled upload form without external dependencies."""
+    content_type = handler.headers.get("Content-Type", "")
+    match = re.search(r"boundary=(?:\"([^\"]+)\"|([^;]+))", content_type)
+    if not match: raise ValueError("Expected a multipart upload.")
+    boundary = (match.group(1) or match.group(2)).encode()
+    body = handler.rfile.read(size)
+    fields, upload = {}, None
+    for part in body.split(b"--" + boundary)[1:-1]:
+        part = part.lstrip(b"\r\n")
+        head, marker, data = part.partition(b"\r\n\r\n")
+        if not marker: continue
+        data = data[:-2] if data.endswith(b"\r\n") else data
+        disposition = next((line.decode("utf-8", "replace") for line in head.split(b"\r\n")
+                            if line.lower().startswith(b"content-disposition:")), "")
+        name_match = re.search(r'name="([^"]+)"', disposition)
+        file_match = re.search(r'filename="([^"]*)"', disposition)
+        if not name_match: continue
+        if file_match:
+            upload = {"name": Path(file_match.group(1)).name, "data": data}
+        else:
+            fields[name_match.group(1)] = data.decode("utf-8", "replace")
+    return fields, upload
+
+def validate_public_url(value):
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("Use a complete public HTTP or HTTPS link.")
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, parsed.port or 443,
+                                                               type=socket.SOCK_STREAM)}
+    except socket.gaierror as exc:
+        raise ValueError("The shared-link host could not be found.") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+            raise ValueError("Shared links must not point to loopback, link-local, or reserved addresses.")
+    return value
+
+class SafeRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+def download_song(url, target):
+    """Download a public direct/shared link with redirect and size checks."""
+    validate_public_url(url)
+    request = Request(url, headers={"User-Agent":"PianoStudio/1.0"})
+    total = 0
+    with build_opener(SafeRedirects).open(request, timeout=30) as response, target.open("wb") as output:
+        declared = response.headers.get("Content-Length")
+        if declared and int(declared) > MAX_SONG_UPLOAD:
+            raise ValueError("Linked song is larger than 100 MB.")
+        while chunk := response.read(256 * 1024):
+            total += len(chunk)
+            if total > MAX_SONG_UPLOAD:
+                raise ValueError("Linked song is larger than 100 MB.")
+            output.write(chunk)
+    if not total: raise ValueError("The shared link returned an empty file.")
+    return total
 
 class Handler(SimpleHTTPRequestHandler):
     server_version = "PianoStudio/1.0"
@@ -282,6 +369,54 @@ class Handler(SimpleHTTPRequestHandler):
                     save_progress(p)
                 return self.send_json(p)
             except (ValueError,TypeError,json.JSONDecodeError) as exc:
+                return self.send_json({"error":str(exc)},400)
+        if path == "/api/song-to-piano":
+            source = None
+            try:
+                size = int(self.headers.get("Content-Length", "0"))
+                if not 1 <= size <= MAX_SONG_UPLOAD: return self.send_json({"error":"Song must be no larger than 100 MB."},413)
+                fields, upload = parse_multipart(self, size)
+                if upload and not upload.get("data"): upload = None
+                song_url = fields.get("song_url", "").strip()
+                if bool(upload and upload.get("data")) == bool(song_url):
+                    raise ValueError("Choose one source: upload a file or enter a shared link.")
+                source_name = upload["name"] if upload else Path(urlparse(song_url).path).name
+                suffix = Path(source_name).suffix.lower()
+                if suffix not in SONG_SUFFIXES: raise ValueError("Use MIDI, MP3, WAV, M4A, WebM, MP4, MKV, FLAC, OGG, AAC, or MOV.")
+                meter = fields.get("time", "4/4")
+                accompaniment = fields.get("accompaniment", "flowing")
+                if meter not in ("2/4", "3/4", "4/4"): raise ValueError("Choose a supported time signature.")
+                if accompaniment not in ("flowing", "alberti", "waltz", "chords"): raise ValueError("Choose a supported accompaniment.")
+                if accompaniment == "waltz" and meter != "3/4": raise ValueError("Waltz accompaniment requires 3/4 time.")
+                max_bars = int(fields.get("max_bars", "32"))
+                if max_bars not in (16, 24, 32, 48, 64): raise ValueError("Choose a supported length.")
+                bpm_text = fields.get("bpm", "").strip()
+                bpm = int(bpm_text) if bpm_text else None
+                if bpm is not None and not 40 <= bpm <= 160: raise ValueError("Tempo must be 40–160 BPM.")
+                title = fields.get("title", "").strip()[:100]
+                with LOCK:
+                    if any(j["status"] in ("queued","composing") for j in JOBS.values()):
+                        return self.send_json({"error":"Another composition is in progress. Please wait."},429)
+                    prune_jobs(); job_id = uuid.uuid4().hex
+                    upload_dir = OUTPUT / ".uploads"; upload_dir.mkdir(exist_ok=True)
+                    source = upload_dir / f"{job_id}{suffix}"
+                    if upload:
+                        source.write_bytes(upload["data"])
+                        source_size = len(upload["data"])
+                    else:
+                        source_size = download_song(song_url, source)
+                    clean = {"kind":"song", "source":str(source), "title":title,
+                             "time":meter, "accompaniment":accompaniment,
+                             "max_bars":max_bars, "bpm":bpm, "composer":"transcriber"}
+                    JOBS[job_id] = {"id":job_id,"status":"queued","message":"Preparing your song…",
+                                    "created":time.time(),"progress":2,"stage":"Queued",
+                                    "composer":"transcriber","bars":max_bars,
+                                    "diagnostic":f"Received {source_name}; the conversion worker is starting."}
+                job_event(job_id, f"accepted kind=song file={source_name} size={source_size}")
+                threading.Thread(target=run_job,args=(job_id,clean),daemon=True).start()
+                return self.send_json(JOBS[job_id],202)
+            except (ValueError,TypeError) as exc:
+                if source: source.unlink(missing_ok=True)
                 return self.send_json({"error":str(exc)},400)
         if path not in ("/api/compose", "/api/lesson"): return self.send_error(404)
         try:

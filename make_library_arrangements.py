@@ -50,7 +50,72 @@ AMAZING_GRACE = {
     ],
 }
 
-ARRANGEMENTS = {"amazing-grace": ("Amazing_Grace", AMAZING_GRACE)}
+TWINKLE = {
+    "title": "Twinkle, Twinkle, Little Star",
+    "subtitle": "After Mozart's theme — simplified for piano solo, two hands",
+    "key_sig": 0, "minor": False, "time": [4, 4], "bpm": 72,
+    "tempo_mark": "Simply", "accompaniment": "chords",
+    "sections": [{"bar": 0, "name": "Theme", "dynamic": "mp"},
+                 {"bar": 8, "name": "Return", "dynamic": "mf"}],
+    "bars": [
+        {"chord": "C", "melody": [["C4",1],["C4",1],["G4",1],["G4",1]]},
+        {"chord": "F", "melody": [["A4",1],["A4",1],["G4",2]]},
+        {"chord": "F", "melody": [["F4",1],["F4",1],["E4",1],["E4",1]]},
+        {"chord": "C", "melody": [["D4",1],["D4",1],["C4",2]]},
+        {"chord": "G", "melody": [["G4",1],["G4",1],["F4",1],["F4",1]]},
+        {"chord": "C", "melody": [["E4",1],["E4",1],["D4",2]]},
+        {"chord": "G", "melody": [["G4",1],["G4",1],["F4",1],["F4",1]]},
+        {"chord": "C", "melody": [["E4",1],["E4",1],["D4",2]]},
+        {"chord": "C", "melody": [["C4",1],["C4",1],["G4",1],["G4",1]]},
+        {"chord": "F", "melody": [["A4",1],["A4",1],["G4",2]]},
+        {"chord": "F", "melody": [["F4",1],["F4",1],["E4",1],["E4",1]]},
+        {"chord": "C", "melody": [["D4",1],["D4",1],["C4",2]]},
+    ],
+}
+
+EINE_KLEINE = {
+    "title": "Eine kleine Nachtmusik",
+    "subtitle": "After Mozart, K. 525 — simplified for piano solo, two hands",
+    "key_sig": 0, "minor": False, "time": [4, 4], "bpm": 88,
+    "tempo_mark": "Allegretto", "accompaniment": "alberti",
+    "sections": [{"bar": 0, "name": "Opening theme", "dynamic": "mf"}],
+    "bars": [
+        {"chord":"C", "melody":[["C4",1],["E4",1],["G4",1],["E4",1]]},
+        {"chord":"F", "melody":[["F4",1],["E4",1],["D4",1],["C4",1]]},
+        {"chord":"C", "melody":[["C4",1],["E4",1],["G4",1],["E4",1]]},
+        {"chord":"G", "melody":[["D4",1],["D4",1],["C4",2]]},
+        {"chord":"C", "melody":[["G4",1],["E4",1],["G4",1],["C5",1]]},
+        {"chord":"F", "melody":[["A4",1],["F4",1],["E4",1],["D4",1]]},
+        {"chord":"G", "melody":[["G4",1],["F4",1],["D4",1],["B3",1]]},
+        {"chord":"C", "melody":[["C4",4]]},
+    ],
+}
+
+HAYDN_SURPRISE = {
+    "title": "Surprise Symphony Theme",
+    "subtitle": "After Haydn, Symphony No. 94 — simplified piano solo",
+    "key_sig": 0, "minor": False, "time": [4, 4], "bpm": 72,
+    "tempo_mark": "Andante", "accompaniment": "chords",
+    "sections": [{"bar": 0, "name": "Theme", "dynamic": "p"},
+                 {"bar": 4, "name": "Surprise!", "dynamic": "f"}],
+    "bars": [
+        {"chord":"C", "melody":[["C4",1],["C4",1],["E4",1],["E4",1]]},
+        {"chord":"C", "melody":[["G4",1],["G4",1],["E4",2]]},
+        {"chord":"G", "melody":[["F4",1],["F4",1],["D4",1],["D4",1]]},
+        {"chord":"G", "melody":[["B3",1],["B3",1],["G3",2]]},
+        {"chord":"C", "melody":[["C4",1],["C4",1],["E4",1],["E4",1]]},
+        {"chord":"C", "melody":[["G4",1],["G4",1],["E4",2]]},
+        {"chord":"G", "melody":[["F4",1],["D4",1],["B3",1],["G3",1]]},
+        {"chord":"C", "melody":[["C4",4]]},
+    ],
+}
+
+ARRANGEMENTS = {
+    "amazing-grace": ("Amazing_Grace", AMAZING_GRACE),
+    "twinkle": ("Mozart_Twinkle_Theme", TWINKLE),
+    "eine-kleine": ("Mozart_Eine_Kleine_Nachtmusik", EINE_KLEINE),
+    "haydn-surprise": ("Haydn_Surprise_Symphony", HAYDN_SURPRISE),
+}
 
 
 def render(name, output_dir):
