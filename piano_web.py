@@ -13,6 +13,8 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 PUBLISHED = Path("/srv/files/piano")
 JOBS = {}
 LOCK = threading.Lock()
+MAX_JOBS = 100
+MEDIA_SUFFIXES = {".pdf", ".mid", ".mp3", ".m4a", ".wav", ".json"}
 
 def job_event(job_id, message):
     print(f"piano job {job_id[:8]}: {message}", flush=True)
@@ -49,20 +51,31 @@ def safe_name(value):
     value = re.sub(r"[^\w\s-]", "", value, flags=re.UNICODE).strip()
     return re.sub(r"[\s_]+", "_", value)[:80] or "composition"
 
+def prune_jobs():
+    """Keep at most MAX_JOBS, removing the oldest finished jobs first."""
+    finished=sorted((job.get("created",0),job_id) for job_id,job in JOBS.items()
+                    if job.get("status") not in ("queued","composing"))
+    while len(JOBS) >= MAX_JOBS and finished:
+        _,job_id=finished.pop(0)
+        JOBS.pop(job_id,None)
+
 def library():
     groups = {}
-    folders = list(dict.fromkeys((OUTPUT, PUBLISHED, ROOT)))
+    folders = list(dict.fromkeys((OUTPUT, PUBLISHED)))
     for folder in folders:
         if not folder.is_dir():
             continue
         for p in folder.iterdir():
-            if p.is_file() and p.suffix.lower() in {".pdf", ".mid", ".mp3", ".m4a", ".wav"}:
+            if p.is_file() and p.suffix.lower() in MEDIA_SUFFIXES - {".json"}:
                 groups.setdefault(p.stem, {})[p.suffix.lower().lstrip(".")] = p
     rows=[]
     for stem, files in groups.items():
         rows.append({"name": stem.replace("_", " "), "stem": stem,
-                     "files": {k: f"files/{p.name}" for k,p in sorted(files.items())}})
-    return sorted(rows, key=lambda x: max((ROOT / Path(v).name).stat().st_mtime if (ROOT / Path(v).name).exists() else 0 for v in x["files"].values()), reverse=True)
+                     "files": {k: f"files/{p.name}" for k,p in sorted(files.items())},
+                     "mtime": max(p.stat().st_mtime for p in files.values())})
+    rows.sort(key=lambda row: row["mtime"],reverse=True)
+    for row in rows: row.pop("mtime")
+    return rows
 
 def run_job(job_id, request):
     title = request.get("title", "").strip()
@@ -147,7 +160,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(job or {"error":"Job not found"}, 200 if job else 404)
         if path.startswith("/files/"):
             name=Path(path).name
-            candidates=[OUTPUT/name, PUBLISHED/name, ROOT/name]
+            if Path(name).suffix.lower() not in MEDIA_SUFFIXES: return self.send_error(404)
+            candidates=[OUTPUT/name, PUBLISHED/name]
             p=next((x for x in candidates if x.is_file()),None)
             if not p: return self.send_error(404)
             self.send_response(200); self.send_header("Content-Type",mimetypes.guess_type(p.name)[0] or "application/octet-stream")
@@ -177,6 +191,7 @@ class Handler(SimpleHTTPRequestHandler):
             with LOCK:
                 if any(j["status"] in ("queued","composing") for j in JOBS.values()):
                     return self.send_json({"error":"Another composition is in progress. Please wait."},429)
+                prune_jobs()
                 job_id=uuid.uuid4().hex
                 JOBS[job_id]={"id":job_id,"status":"queued","message":"Preparing your composition…",
                               "created":time.time(),"progress":2,"stage":"Queued","composer":composer,
