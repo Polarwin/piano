@@ -44,6 +44,9 @@ Notable changes to Piano Studio are recorded here.
 - Song conversion now detects embedded MIDI time signatures, estimates meter
   from rhythmic accents when metadata is absent, and derives arrangement
   length from the source duration with a 64-measure safety cap.
+- Installed Spotify Basic Pitch in an isolated Python 3.11 environment and
+  connected it to the converter, enabling MP3/M4A/WebM/MP4/MKV transcription
+  without changing Piano Studio's system Python 3.14 runtime.
 
 ### Documentation
 

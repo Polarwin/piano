@@ -19,6 +19,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import os
 
 import musiclib
 from render_library_midi import parse_midi, tick_converter
@@ -28,6 +29,7 @@ AUDIO_EXTENSIONS = {
     ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg",
     ".webm", ".mp4", ".mkv", ".mov",
 }
+DEFAULT_BASIC_PITCH = Path("/home/justin/.local/share/piano-basic-pitch/bin/basic-pitch")
 CHORDS = {
     "C": (0, 4, 7), "Cm": (0, 3, 7),
     "D": (2, 6, 9), "Dm": (2, 5, 9),
@@ -45,7 +47,10 @@ KEY_SIGS = {
 
 
 def audio_to_midi(source, directory):
-    command = shutil.which("basic-pitch")
+    configured = os.environ.get("PIANO_BASIC_PITCH")
+    command = configured or shutil.which("basic-pitch")
+    if not command and DEFAULT_BASIC_PITCH.is_file():
+        command = str(DEFAULT_BASIC_PITCH)
     if not command:
         raise RuntimeError(
             "Audio transcription requires Spotify Basic Pitch. Install it with "
@@ -125,7 +130,7 @@ def melody_at(notes, moment):
     if not sounding:
         return None
     # Prefer the highest clear line, with velocity as a small tie breaker.
-    return max(sounding, key=lambda item: (item[0], item[1]))[0]
+    return transpose_note(max(sounding, key=lambda item: (item[0], item[1]))[0], 0)
 
 
 def choose_chord(notes, start, end, previous="C"):
@@ -235,11 +240,16 @@ def main():
         parser.error("waltz accompaniment requires --time 3/4")
     with tempfile.TemporaryDirectory() as temp:
         midi = source
-        if source.suffix.lower() in AUDIO_EXTENSIONS:
+        from_audio = source.suffix.lower() in AUDIO_EXTENSIONS
+        if from_audio:
             midi = audio_to_midi(source, Path(temp))
         elif source.suffix.lower() not in {".mid", ".midi"}:
             parser.error("input must be MIDI or a supported audio file")
         notes, metadata = midi_notes(midi)
+        if from_audio:
+            # Basic Pitch writes a generic 4/4 header; it is not a measurement
+            # of the source meter, so let the rhythm estimator decide instead.
+            metadata = {"time_signatures": []}
         bpm = args.bpm or estimate_bpm(notes)
         if args.time == "auto":
             numerator, denominator, time_source = estimate_time_signature(
