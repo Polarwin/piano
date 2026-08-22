@@ -28,6 +28,9 @@ PIANO_SOLOS = (
     "Debussy_Clair_de_Lune",
     "Pachelbel_Canon_in_D",
     "Schumann_Traumerei",
+    "Schumann_Little_Piece_Op68_No5",
+    "Schumann_Melody_Op68_No1",
+    "Schumann_Soldiers_March_Op68_No2",
 )
 
 
