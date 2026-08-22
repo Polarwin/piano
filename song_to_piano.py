@@ -30,19 +30,18 @@ AUDIO_EXTENSIONS = {
     ".webm", ".mp4", ".mkv", ".mov",
 }
 DEFAULT_BASIC_PITCH = Path("/home/justin/.local/share/piano-basic-pitch/bin/basic-pitch")
+ROOT_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
 CHORDS = {
-    "C": (0, 4, 7), "Cm": (0, 3, 7),
-    "D": (2, 6, 9), "Dm": (2, 5, 9),
-    "E": (4, 8, 11), "Em": (4, 7, 11),
-    "F": (5, 9, 0), "Fm": (5, 8, 0),
-    "G": (7, 11, 2), "Gm": (7, 10, 2),
-    "A": (9, 1, 4), "Am": (9, 0, 4),
-    "B": (11, 3, 6), "Bm": (11, 2, 6),
+    name + suffix: (pc, (pc + third) % 12, (pc + 7) % 12)
+    for pc, name in enumerate(ROOT_NAMES)
+    for suffix, third in (("", 4), ("m", 3))
 }
 KEY_SIGS = {
     "C": (0, False), "Am": (0, True), "G": (1, False), "Em": (1, True),
     "D": (2, False), "Bm": (2, True), "A": (3, False),
     "F": (-1, False), "Dm": (-1, True), "Bb": (-2, False),
+    "F#m": (3, True), "E": (4, False), "C#m": (4, True),
+    "B": (5, False), "G#m": (5, True), "Eb": (-3, False), "Cm": (-3, True),
 }
 
 
@@ -124,13 +123,34 @@ def transpose_note(note, shift):
     return max(48, min(84, note + shift))
 
 
-def melody_at(notes, moment):
+def fit_melody_register(note, mode):
+    if mode == "lower":
+        return transpose_note(note, -12)
+    if mode == "original":
+        return transpose_note(note, 0)
+    # Keep the melody centred where an adult beginner can read and play it,
+    # folding transcription overtones down rather than merely clipping them.
+    while note > 76:  # E5
+        note -= 12
+    while note < 55:  # G3
+        note += 12
+    return transpose_note(note, 0)
+
+
+def melody_at(notes, moment, previous=None, register="auto"):
     sounding = [(note, velocity) for start, end, note, velocity in notes
                 if start <= moment < end and note >= 48]
     if not sounding:
         return None
-    # Prefer the highest clear line, with velocity as a small tie breaker.
-    return transpose_note(max(sounding, key=lambda item: (item[0], item[1]))[0], 0)
+    if previous is None:
+        chosen = max(sounding, key=lambda item: (item[0], item[1]))[0]
+    else:
+        # A singable line usually moves locally. Velocity preserves prominent
+        # notes while the continuity penalty avoids grabbing isolated upper
+        # accompaniment tones merely because they are highest.
+        chosen = max(sounding, key=lambda item:
+                     item[1] - abs(item[0] - previous) * 3 + item[0] * .08)[0]
+    return fit_melody_register(chosen, register)
 
 
 def choose_chord(notes, start, end, previous="C"):
@@ -173,7 +193,8 @@ def compress_steps(steps, step_beats):
     return result
 
 
-def arrange(notes, title, bpm, time, subdivision, max_bars, accompaniment):
+def arrange(notes, title, bpm, time, subdivision, max_bars, accompaniment,
+            melody_register="auto"):
     numerator, denominator = time
     beats_per_bar = numerator * 4 / denominator
     if beats_per_bar not in (2, 3, 4):
@@ -182,7 +203,7 @@ def arrange(notes, title, bpm, time, subdivision, max_bars, accompaniment):
     bar_seconds = beats_per_bar * seconds_per_beat
     end_time = max(end for _, end, _, _ in notes)
     natural_bars = math.ceil(end_time / bar_seconds)
-    bar_count = max(8, min(max_bars or 64, natural_bars))
+    bar_count = max(8, min(max_bars or 256, natural_bars))
     step_beats = 1 / subdivision
     steps_per_bar = round(beats_per_bar / step_beats)
     last_note = 60
@@ -193,7 +214,7 @@ def arrange(notes, title, bpm, time, subdivision, max_bars, accompaniment):
         sampled = []
         for step in range(steps_per_bar):
             moment = start + (step + .15) * step_beats * seconds_per_beat
-            note = melody_at(notes, moment)
+            note = melody_at(notes, moment, last_note, melody_register)
             if note is None:
                 note = last_note
             last_note = note
@@ -227,10 +248,14 @@ def main():
     parser.add_argument("--subdivision", type=int, choices=(1, 2), default=2,
                         help="melody samples per beat (default: 2)")
     parser.add_argument("--max-bars", type=int,
-                        help="truncate at this many bars (default: detect, capped at 64)")
+                        help="truncate at this many bars (default: detect, capped at 256)")
     parser.add_argument("--accompaniment", choices=("flowing", "alberti", "waltz", "chords"),
                         default="flowing")
+    parser.add_argument("--melody-register", choices=("auto", "lower", "original"),
+                        default="auto", help="octave placement for the right-hand melody")
     args = parser.parse_args()
+    if args.max_bars is not None and not 8 <= args.max_bars <= 256:
+        parser.error("--max-bars must be between 8 and 256")
     source = args.song.resolve()
     if not source.is_file():
         parser.error(f"file not found: {source}")
@@ -259,7 +284,7 @@ def main():
             time = tuple(map(int, args.time.split("/")))
             time_source = "manual override"
         data = arrange(notes, title, bpm, time, args.subdivision,
-                       args.max_bars, args.accompaniment)
+                       args.max_bars, args.accompaniment, args.melody_register)
         score = musiclib.build_score(copy.deepcopy(data))
         made = musiclib.render_all(score, str(output), audio=True)
     print(f"arranged {len(data['bars'])} bars in {time[0]}/{time[1]} "

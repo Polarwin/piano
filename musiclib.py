@@ -126,8 +126,8 @@ def build_score(data):
         if abs(total - bar_beats) > 1e-9:
             raise ValueError(f"bar {i+1}: melody sums to {total} beats, need {bar_beats}")
         bars.append({"chord": chord, "rh": melody})
-    if not 8 <= len(bars) <= 64:
-        raise ValueError(f"need 8-64 bars, got {len(bars)}")
+    if not 8 <= len(bars) <= 256:
+        raise ValueError(f"need 8-256 bars, got {len(bars)}")
     score["bars"] = bars
 
     sections = []
@@ -205,7 +205,8 @@ def write_midi(score, path):
     num, den = score["time"]
     bpms = bpm_map(score)
     dd = {2: 1, 4: 2, 8: 3}[den]
-    meta = [(0, 0, b"\xff\x03" + bytes([len(score["title"])]) + score["title"].encode("utf-8", "replace")),
+    title_bytes = score["title"].encode("utf-8", "replace")
+    meta = [(0, 0, b"\xff\x03" + vlq(len(title_bytes)) + title_bytes),
             (0, 1, bytes([0xFF, 0x58, 0x04, num, dd, 0x18, 0x08])),
             (0, 1, bytes([0xFF, 0x59, 0x02]) + struct.pack("b", score["key_sig"]) + bytes([1 if score["minor"] else 0]))]
     bar_beats = num * 4 // den
@@ -561,14 +562,14 @@ def render_all(score, basename, audio=True):
     if audio:
         wav = f"{basename}.wav"
         render_audio(score, wav)
-        made.append(wav)
         try:
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav,
                             "-codec:a", "libmp3lame", "-q:a", "3", f"{basename}.mp3"],
                            check=True)
             made.append(f"{basename}.mp3")
+            os.remove(wav)
         except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
+            made.append(wav)  # retain the WAV only when MP3 conversion failed
     return made
 
 if __name__ == "__main__":

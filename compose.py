@@ -2,16 +2,14 @@
 """compose — prompt-to-music CLI.
 
 Describe a piano piece in plain words; the selected AI CLI composes it as
-structured JSON, and musiclib renders sheet music (PDF), MIDI and audio
-(WAV/MP3).
+structured JSON, and musiclib renders sheet music (PDF), MIDI and MP3 audio.
 
 Usage:
     python3 compose.py "a dreamy waltz in F major, slow and gentle"
     python3 compose.py "sad nocturne in A minor" --title "Night Rain" --bars 24
     python3 compose.py "happy ragtime" --no-audio --keep-json
 
-Requires a logged-in `kimi` or `codex` CLI for composition, and ffmpeg for MP3
-(optional; WAV is always produced).
+Requires a logged-in `kimi` or `codex` CLI for composition and ffmpeg for MP3.
 """
 import argparse, json, os, re, subprocess, sys, tempfile
 
@@ -89,7 +87,7 @@ def main():
     ap.add_argument("--composer", choices=("kimi", "codex"), default="kimi",
                     help="AI CLI used to compose the score (default: kimi)")
     ap.add_argument("--out", help="output basename (default: slugified title)")
-    ap.add_argument("--no-audio", action="store_true", help="skip WAV/MP3 rendering")
+    ap.add_argument("--no-audio", action="store_true", help="skip MP3 rendering")
     ap.add_argument("--keep-json", action="store_true", help="keep the intermediate score JSON")
     ap.add_argument("--timeout", type=int, default=600, help="AI CLI timeout in seconds")
     args = ap.parse_args()

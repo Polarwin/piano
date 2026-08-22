@@ -15,7 +15,7 @@ PUBLISHED = Path("/srv/files/piano")
 JOBS = {}
 LOCK = threading.Lock()
 MAX_JOBS = 100
-MEDIA_SUFFIXES = {".pdf", ".mid", ".mp3", ".m4a", ".wav", ".json"}
+MEDIA_SUFFIXES = {".pdf", ".mid", ".mp3", ".m4a", ".json"}
 SONG_SUFFIXES = {".mid", ".midi", ".mp3", ".wav", ".m4a", ".aac", ".flac",
                  ".ogg", ".webm", ".mp4", ".mkv", ".mov"}
 MAX_SONG_UPLOAD = 100 * 1024 * 1024
@@ -70,6 +70,17 @@ def fallback_score(request):
 def safe_name(value):
     value = re.sub(r"[^\w\s-]", "", value, flags=re.UNICODE).strip()
     return re.sub(r"[\s_]+", "_", value)[:80] or "composition"
+
+def title_from_source(filename):
+    """Human title from uploaded or URL-encoded media filename."""
+    value = Path(filename).stem
+    for _ in range(3):
+        decoded = unquote(value)
+        if decoded == value: break
+        value = decoded
+    value = re.sub(r"\s*\[[\w-]{6,}\]\s*$", "", value)
+    value = re.sub(r"[_+]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip(" .-_()")[:100] or "Piano Solo"
 
 def prune_jobs():
     """Keep at most MAX_JOBS, removing the oldest finished jobs first."""
@@ -153,10 +164,11 @@ def run_job(job_id, request):
         source = Path(request["source"])
         cmd = [os.sys.executable, str(ROOT / "song_to_piano.py"), str(source),
                "--out", str(base), "--title", title or source.stem.replace("_", " ").title(),
-               "--time", request["time"], "--accompaniment", request["accompaniment"]]
+               "--time", request["time"], "--accompaniment", request["accompaniment"],
+               "--melody-register", request["melody_register"]]
         if request.get("max_bars"): cmd += ["--max-bars", str(request["max_bars"])]
         if request.get("bpm"): cmd += ["--bpm", str(request["bpm"])]
-        exts = ("pdf", "mid", "mp3", "wav")
+        exts = ("pdf", "mid", "mp3")
         expected = 240
         working = "Transcribing the song and arranging it for two hands…"
     elif kind == "lesson":
@@ -176,7 +188,7 @@ def run_job(job_id, request):
                "--composer", request["composer"]]
         if title: cmd += ["--title", title]
         if not request.get("audio", True): cmd.append("--no-audio")
-        exts = ("pdf", "mid", "mp3", "wav", "json")
+        exts = ("pdf", "mid", "mp3", "json")
         expected = (120 if request["composer"] == "kimi" else 210) + request["bars"] * 2
         working = f"{request['composer'].title()} is writing melody and harmony…"
     with LOCK:
@@ -311,6 +323,23 @@ def download_song(url, target):
 class Handler(SimpleHTTPRequestHandler):
     server_version = "PianoStudio/1.0"
     def log_message(self, fmt, *args): print("piano:", fmt % args, flush=True)
+    def is_intranet(self):
+        """Require both a LAN client and a LAN host; public FRP may have a private hop."""
+        client = self.headers.get("X-Real-IP", self.client_address[0]).strip()
+        host = urlparse("//" + self.headers.get("Host", "")).hostname or ""
+        try:
+            client_ip = ipaddress.ip_address(client)
+        except ValueError:
+            return False
+        if not (client_ip.is_private or client_ip.is_loopback):
+            return False
+        if host.lower() in ("localhost", "alicebob"):
+            return True
+        try:
+            host_ip = ipaddress.ip_address(host)
+            return host_ip.is_private or host_ip.is_loopback
+        except ValueError:
+            return False
     def send_json(self, obj, status=200):
         body=json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8")
@@ -318,7 +347,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers(); self.wfile.write(body)
     def do_GET(self):
         path=unquote(urlparse(self.path).path)
-        if path == "/api/library": return self.send_json({"pieces":library()})
+        if path == "/api/library": return self.send_json({"pieces":library(), "can_delete":self.is_intranet()})
         if path == "/api/progress": return self.send_json(load_progress())
         if path.startswith("/api/jobs/"):
             with LOCK:
@@ -345,6 +374,26 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type",mimetypes.guess_type(target.name)[0] or "text/plain")
         self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-cache")
         self.end_headers(); self.wfile.write(body)
+    def do_DELETE(self):
+        path = unquote(urlparse(self.path).path)
+        prefix = "/api/pieces/"
+        if not path.startswith(prefix): return self.send_error(404)
+        if not self.is_intranet():
+            return self.send_json({"error":"Deleting compositions is available only on the intranet."},403)
+        stem = path[len(prefix):]
+        if not re.fullmatch(r"[\w-]{1,100}", stem, re.UNICODE):
+            return self.send_json({"error":"Invalid composition name."},400)
+        # Only root-level generated compositions are eligible. Course lessons
+        # and curated library files live in subdirectories and cannot match.
+        deleted = []
+        roots = list(dict.fromkeys((OUTPUT, PUBLISHED)))
+        for root in roots:
+            for suffix in (".pdf", ".mid", ".mp3", ".m4a", ".wav", ".json"):
+                target = root / f"{stem}{suffix}"
+                if target.is_file():
+                    target.unlink(); deleted.append(target.name)
+        if not deleted: return self.send_json({"error":"Composition not found."},404)
+        return self.send_json({"deleted":sorted(set(deleted))})
     def do_POST(self):
         path = urlparse(self.path).path
         if path == "/api/progress":
@@ -385,16 +434,18 @@ class Handler(SimpleHTTPRequestHandler):
                 if suffix not in SONG_SUFFIXES: raise ValueError("Use MIDI, MP3, WAV, M4A, WebM, MP4, MKV, FLAC, OGG, AAC, or MOV.")
                 meter = fields.get("time", "auto")
                 accompaniment = fields.get("accompaniment", "flowing")
+                melody_register = fields.get("melody_register", "auto")
                 if meter not in ("auto", "2/4", "3/4", "4/4"): raise ValueError("Choose a supported time signature.")
                 if accompaniment not in ("flowing", "alberti", "waltz", "chords"): raise ValueError("Choose a supported accompaniment.")
+                if melody_register not in ("auto", "lower", "original"): raise ValueError("Choose a supported melody register.")
                 if accompaniment == "waltz" and meter not in ("auto", "3/4"): raise ValueError("Waltz accompaniment requires 3/4 time.")
                 max_text = fields.get("max_bars", "auto")
                 max_bars = None if max_text == "auto" else int(max_text)
-                if max_bars is not None and max_bars not in (16, 24, 32, 48, 64): raise ValueError("Choose a supported length.")
+                if max_bars is not None and max_bars not in (16, 24, 32, 48, 64, 96, 128, 192, 256): raise ValueError("Choose a supported length.")
                 bpm_text = fields.get("bpm", "").strip()
                 bpm = int(bpm_text) if bpm_text else None
                 if bpm is not None and not 40 <= bpm <= 160: raise ValueError("Tempo must be 40–160 BPM.")
-                title = fields.get("title", "").strip()[:100]
+                title = fields.get("title", "").strip()[:100] or title_from_source(source_name)
                 with LOCK:
                     if any(j["status"] in ("queued","composing") for j in JOBS.values()):
                         return self.send_json({"error":"Another composition is in progress. Please wait."},429)
@@ -408,7 +459,8 @@ class Handler(SimpleHTTPRequestHandler):
                         source_size = download_song(song_url, source)
                     clean = {"kind":"song", "source":str(source), "title":title,
                              "time":meter, "accompaniment":accompaniment,
-                             "max_bars":max_bars, "bpm":bpm, "composer":"transcriber"}
+                             "melody_register":melody_register, "max_bars":max_bars,
+                             "bpm":bpm, "composer":"transcriber"}
                     JOBS[job_id] = {"id":job_id,"status":"queued","message":"Preparing your song…",
                                     "created":time.time(),"progress":2,"stage":"Queued",
                                     "composer":"transcriber","bars":max_bars,

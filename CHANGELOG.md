@@ -47,6 +47,16 @@ Notable changes to Piano Studio are recorded here.
 - Installed Spotify Basic Pitch in an isolated Python 3.11 environment and
   connected it to the converter, enabling MP3/M4A/WebM/MP4/MKV transcription
   without changing Piano Studio's system Python 3.14 runtime.
+- Improved converted-song naming from uploaded or URL-encoded source names,
+  removed trailing video IDs, expanded chord recognition to all chromatic
+  major/minor roots, made melody tracking favour a continuous line, and raised
+  automatic full-song arrangements from 64 to 256 bars.
+- Added automatic right-hand register normalization plus lower/original octave
+  overrides, and fixed UTF-8 MIDI title lengths for non-Latin song names.
+- Added protected, intranet-only delete buttons for generated AI compositions.
+  Public-host requests, curated scores, and course lessons cannot delete files.
+- Stopped retaining WAV files after successful MP3 encoding and removed WAV
+  links from newly generated prompt compositions and song conversions.
 
 ### Documentation
 
