@@ -12,6 +12,7 @@ Usage:
 import argparse, json, os, re, subprocess, sys, tempfile
 
 import musiclib
+import melodies
 from lesson_day_one import Doc, exercise
 from lesson_day_two import grand_exercise
 from lesson_audio import lesson_score
@@ -29,6 +30,8 @@ JSON schema (strict):
       "paragraphs": ["..."],        // optional
       "bullets": ["..."],           // optional
       "exercise": {{                 // optional
+        "melody": "ode_to_joy",      // optional: reviewed notes are injected for this key —
+                                     // then omit "rh"/"lh" entirely (see list below)
         "time": [3, 4],              // optional, default [4,4]; one of [2,4], [3,4], [4,4]
         "tempo": "Slowly",           // optional text mark shown above the staff
         "dynamic": "p",              // optional: ppp pp p mp mf f ff
@@ -47,10 +50,11 @@ Hand entries — each hand is a list mixing these forms:
 
 Rules:
 - Audience: an adult absolute beginner. Warm, plain language, short paragraphs. 4-7 sections, 1-4 exercises.
-- Every exercise's durations must sum to a multiple of the bar length (4 beats in 4/4, 3 in 3/4, 2 in 2/4); no single note may be longer than one bar. Use [3,4] time when the lesson teaches waltz or triple meter. All exercises in one lesson share the same time signature.
+- Every exercise's durations must sum to a multiple of the bar length (4 beats in 4/4, 3 in 3/4, 2 in 2/4); no single note may be longer than one bar, and no note may cross a barline (e.g. in 4/4 a 3-beat note cannot start on beat 3). Use [3,4] time when the lesson teaches waltz or triple meter. All exercises in one lesson share the same time signature.
 - Both hands of one exercise must have equal total beats. Keep hands in five-finger positions (left C2-G2 area, right C4-G5 area) unless the lesson specifically moves beyond them.
 - Chords are now supported — prefer genuine chords over broken-chord workarounds when the lesson is about chords. Keep them slow (half or whole notes) for beginners.
 - Exercises must fit the lesson topic and progress gently.
+- If the request names one of these reviewed melodies, the exercise MUST set "melody" to its key and omit "rh"/"lh" (the exact notes are inserted for you; never write them yourself): {melody_keys}. A melody fixes its own time signature — do not set "time" on a melody exercise, and write the lesson's other exercises in that same meter. You may still add your own original exercises (without "melody") in other sections.
 """
 
 DURS = {0.5, 1, 1.5, 2, 3, 4}
@@ -85,6 +89,7 @@ def validate_hand(notes, where, bar_beats=4):
         return None
     out = []
     total = 0.0
+    pos = 0.0
     for item in notes:
         if isinstance(item, dict) and "chord" in item:
             tones = []
@@ -110,15 +115,21 @@ def validate_hand(notes, where, bar_beats=4):
             finger = check_finger(item[3] if len(item) > 3 else None, where)
             out.append(("note", (letter, acc, octave), dur, finger))
         total += out[-1][2]
+        bar_pos = pos % bar_beats
+        if bar_pos + out[-1][2] > bar_beats + 1e-9:
+            raise ValueError(f"{where}: a {out[-1][2]}-beat event crosses a barline "
+                             f"(starts at beat {bar_pos + 1:g} of a {bar_beats}-beat bar)")
+        pos += out[-1][2]
     if not out or total % bar_beats != 0:
         raise ValueError(f"{where}: exercise must total a multiple of {bar_beats} beats (got {total})")
     return out
 
 DYN_RE = re.compile(r"^(ppp|pp|p|mp|mf|f|ff)(.*)$")
 
-def validate_meta(ex, where):
-    """Optional exercise-level marks: time signature, tempo, dynamic, bpm."""
-    t = ex.get("time", [4, 4])
+def validate_meta(ex, where, tune=None):
+    """Optional exercise-level marks: time signature, tempo, dynamic, bpm.
+    A reviewed melody supplies its own time/bpm defaults."""
+    t = ex.get("time") or (tune or {}).get("time") or [4, 4]
     try:
         time = (int(t[0]), int(t[1]))
     except (TypeError, IndexError, ValueError):
@@ -129,7 +140,7 @@ def validate_meta(ex, where):
     dynamic = str(ex.get("dynamic") or "")
     if dynamic and not DYN_RE.match(dynamic):
         raise ValueError(f"section {where}: bad dynamic {dynamic!r}")
-    bpm = ex.get("bpm")
+    bpm = ex.get("bpm") or (tune or {}).get("bpm")
     if bpm is not None and not 40 <= int(bpm) <= 120:
         raise ValueError(f"section {where}: bpm must be 40-120")
     return {"time": time, "tempo": tempo, "dynamic": dynamic,
@@ -152,15 +163,27 @@ def validate(data):
                "exercise": None}
         ex = s.get("exercise")
         if ex:
-            meta = validate_meta(ex, i + 1)
+            tune = None
+            if ex.get("melody"):
+                tune = melodies.MELODIES.get(str(ex["melody"]))
+                if not tune:
+                    raise ValueError(f"section {i+1}: unknown melody {ex['melody']!r}")
+                if ex.get("time") and (int(ex["time"][0]), int(ex["time"][1])) != tune["time"]:
+                    raise ValueError(f"section {i+1}: melody {ex['melody']!r} is written in "
+                                     f"{tune['time'][0]}/{tune['time'][1]} — remove the \"time\" "
+                                     "override (the melody fixes the time signature)")
+            meta = validate_meta(ex, i + 1, tune)
             if lesson_time is None:
                 lesson_time = meta["time"]
             elif meta["time"] != lesson_time:
                 raise ValueError(f"section {i+1}: all exercises must share one time "
                                  f"signature (first exercise uses {lesson_time})")
             bar_beats = meta["time"][0] * 4 // meta["time"][1]
-            rh = validate_hand(ex.get("rh"), f"section {i+1} rh", bar_beats)
-            lh = validate_hand(ex.get("lh"), f"section {i+1} lh", bar_beats)
+            if tune:
+                rh, lh = tune.get("rh"), tune.get("lh")
+            else:
+                rh = validate_hand(ex.get("rh"), f"section {i+1} rh", bar_beats)
+                lh = validate_hand(ex.get("lh"), f"section {i+1} lh", bar_beats)
             if not rh and not lh:
                 raise ValueError(f"section {i+1}: exercise has no notes")
             if rh and lh:
@@ -178,7 +201,8 @@ def validate(data):
     return lesson
 
 def generate_with_ai(provider, prompt, json_path, timeout):
-    full = SCHEMA.format(prompt=prompt, path=json_path)
+    full = SCHEMA.format(prompt=prompt, path=json_path,
+                         melody_keys=", ".join(sorted(melodies.MELODIES)))
     for attempt in (1, 2):
         if os.path.exists(json_path):
             os.remove(json_path)
@@ -200,7 +224,8 @@ def generate_with_ai(provider, prompt, json_path, timeout):
         except (json.JSONDecodeError, ValueError, KeyError, TypeError, IndexError) as e:
             if attempt == 2:
                 raise RuntimeError(f"invalid lesson after retry: {e}")
-            full = SCHEMA.format(prompt=prompt, path=json_path) + \
+            full = SCHEMA.format(prompt=prompt, path=json_path,
+                         melody_keys=", ".join(sorted(melodies.MELODIES))) + \
                    f"\n\nPrevious attempt failed validation: {e}. Fix it and write the file again."
 
 def render(lesson, basename, audio=True):
