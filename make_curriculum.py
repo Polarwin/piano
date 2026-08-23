@@ -16,6 +16,7 @@ import argparse, glob, os, re, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 LESSONS_DIR = "/srv/files/piano/lessons"
 LOG = os.path.join(HERE, "curriculum_build.log")
+ADVANCED_SCOPE = os.path.join(HERE, "MONTHS_4_TO_6_SCOPE.md")
 
 # (week theme, [(day, title, topic), ...])
 # Days that promise a famous theme name a reviewed melody key from melodies.py —
@@ -353,7 +354,23 @@ def all_days():
     for week, days in WEEKS:
         for day, title, topic in days:
             out.append((day, week, title, topic))
-    return sorted(out)
+    if os.path.exists(ADVANCED_SCOPE):
+        theme = "Months Four to Six"
+        row_re = re.compile(
+            r"^\|\s*(\d{2,3})\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*\d+\s*\|\s*[^|]+\|")
+        with open(ADVANCED_SCOPE) as scope:
+            for line in scope:
+                if line.startswith("## Week ") or line.startswith("## Days "):
+                    theme = line[3:].strip()
+                match = row_re.match(line)
+                if match and 91 <= int(match.group(1)) <= 180:
+                    out.append((int(match.group(1)), theme,
+                                match.group(2).strip(), match.group(3).strip()))
+    days = sorted(out)
+    numbers = [day for day, _, _, _ in days]
+    if len(numbers) != len(set(numbers)):
+        raise RuntimeError("duplicate curriculum day in configured scopes")
+    return days
 
 def slug(title):
     return re.sub(r"[^\w]+", "_", title).strip("_")
@@ -361,6 +378,33 @@ def slug(title):
 def prompt_for(day, week, title, topic):
     covered = ([f"Day {d} {t}" for d, t in sorted(EXISTING.items()) if d < day]
                + [f"Day {d} {t}" for d, _, t, _ in all_days() if d < day])
+    level_rule = (
+        "five-finger positions, only the note values and techniques introduced up to this day"
+        if day <= 60 else
+        "the hand positions, keys, rhythms and techniques introduced up to this day; keep spans comfortable and avoid virtuoso writing"
+    )
+    advanced = ""
+    if day >= 91:
+        advanced = (
+            " The lesson engine supports key_sig (-7..7 fifths), pickup durations, "
+            "sixteenth-note duration 0.25, and a fifth boolean on a note to tie it "
+            "to the immediately following same-pitch note. Use these only when today's "
+            "scope requires them. Authentic repertoire named in the topic must be studied "
+            "from the Music Library; generated exercises are preparatory and must not claim "
+            "to reproduce the historical score."
+        )
+    # Extract any hard melody directives from the topic and repeat them explicitly.
+    melodies_required = re.findall(r'"melody"\s*:\s*"([^"]+)"', topic)
+    melody_block = ""
+    if melodies_required:
+        melody_block = (
+            "CRITICAL: today's topic requires the following reviewed melody exercise(s). "
+            "You MUST set the exact JSON \"melody\" field(s) shown and you MUST omit "
+            "\"rh\" and \"lh\" for each such exercise; the exact notes are injected automatically. "
+            "Never write the notes of these melodies yourself:\n"
+            + "\n".join(f'  - "melody": "{m}"' for m in melodies_required)
+            + "\n"
+        )
     return (
         f'You are writing Day {day} of "Six Months to Piano", a daily self-study course '
         f"for a middle-aged absolute beginner who practices 20-30 minutes a day.\n"
@@ -369,11 +413,9 @@ def prompt_for(day, week, title, topic):
         f"brief recall is welcome, but do not re-teach earlier material in depth, and do "
         f"not use any concept not yet introduced. When naming an earlier day, verify its "
         f"number against this sequence; if unsure, omit the day number.\n"
-        f"If the topic says an exercise MUST set \"melody\" to a key, do exactly that and "
-        f"omit rh/lh for that exercise — reviewed notes are injected automatically; never "
-        f"write those notes yourself. Any exercises you invent yourself must fit the "
-        f"learner's level: five-finger positions, only the note values and techniques "
-        f"introduced up to this day, 8-16 bars total.\n"
+        f"{melody_block}"
+        f"Any exercises you invent yourself must fit the learner's level: {level_rule}, "
+        f"8-16 bars total.{advanced}\n"
         f"Title the lesson exactly: Day {day}: {title}."
     )
 

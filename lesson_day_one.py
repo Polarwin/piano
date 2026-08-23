@@ -11,7 +11,8 @@ from reportlab.lib.colors import HexColor
 from reportlab.pdfbase import pdfmetrics
 
 import musiclib
-from musiclib import draw_notehead, draw_ledger, draw_flag, staff_y, register_fonts, LINE, STEP
+from musiclib import (draw_notehead, draw_ledger, draw_flag, draw_key_sig,
+                      staff_y, register_fonts, LINE, STEP)
 
 OUT = "/srv/files/piano/lessons" if os.path.isdir("/srv/files/piano/lessons") and os.access("/srv/files/piano/lessons", os.W_OK) else os.path.dirname(os.path.abspath(__file__))
 W, H = A4
@@ -84,7 +85,8 @@ class Doc:
 # music drawing
 # --------------------------------------------------------------------------
 REST_GLYPH = {4: "\U0001D13B", 3: "\U0001D13C", 2: "\U0001D13C",
-              1.5: "\U0001D13D", 1: "\U0001D13D", 0.5: "\U0001D13E"}
+              1.5: "\U0001D13D", 1: "\U0001D13D", 0.5: "\U0001D13E",
+              0.25: "\U0001D13F"}
 ACC_SIGN = {"#": "♯", "b": "♭"}
 
 def as_events(notes):
@@ -130,23 +132,25 @@ def event_name(kind, payload):
     tones = payload if isinstance(payload, list) else [payload]
     return "+".join(l + a for l, a, _ in tones)
 
-def split_bars(evs, bar_beats):
+def split_bars(evs, bar_beats, pickup=0):
     """Split events into a list of bars (lists of events)."""
     bars, cur, acc = [], [], 0.0
+    target = pickup or bar_beats
     for ev in evs:
         cur.append(ev)
         acc += ev[2]
-        if abs(acc - bar_beats) < 1e-9:
+        if abs(acc - target) < 1e-9:
             bars.append(cur)
             cur, acc = [], 0.0
+            target = bar_beats
     if cur:
         bars.append(cur)
     return bars
 
-def bar_chunks(evs, bar_beats, max_events=16):
+def bar_chunks(evs, bar_beats, max_events=16, pickup=0):
     """Split events into bar-aligned chunks of about max_events each."""
     chunks, cur, count = [], [], 0
-    for bar in split_bars(evs, bar_beats):
+    for bar in split_bars(evs, bar_beats, pickup):
         if cur and count + len(bar) > max_events:
             chunks.append(cur)
             cur, count = [], 0
@@ -157,16 +161,17 @@ def bar_chunks(evs, bar_beats, max_events=16):
     return chunks
 
 def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
-             time=(4, 4), tempo=None, dynamic=None):
+             time=(4, 4), tempo=None, dynamic=None, key_sig=0, pickup=0):
     """notes: v1 tuples or v2 events (see as_events). Barlines per time sig."""
     evs = as_events(notes)
     bar_beats = time[0] * 4 / time[1]
     if len(evs) > 16:
-        chunks = bar_chunks(evs, bar_beats, 16)
+        chunks = bar_chunks(evs, bar_beats, 16, pickup)
         if len(chunks) > 1:
             for k, chunk in enumerate(chunks):
                 exercise(doc, chunk, clef, show_names, show_fingers, time,
-                         tempo if k == 0 else None, dynamic if k == 0 else None)
+                         tempo if k == 0 else None, dynamic if k == 0 else None,
+                         key_sig, pickup if k == 0 else 0)
                 doc.gap(6)
             return
     doc.need(112)
@@ -179,13 +184,14 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
     c.setFont("Clef", 25 if clef == "treble" else 21); c.setFillColor(INK)
     c.drawString(x0 + 2, yb - 7 if clef == "treble" else yb + 3,
                  "\U0001D11E" if clef == "treble" else "\U0001D122")
+    sig_end = draw_key_sig(c, x0 + 28, key_sig, yb, clef)
     c.setFont("Serif", 12)
-    c.drawString(x0 + 30, yb + 12, str(time[0])); c.drawString(x0 + 30, yb + 2, str(time[1]))
+    c.drawString(sig_end, yb + 12, str(time[0])); c.drawString(sig_end, yb + 2, str(time[1]))
     if tempo or dynamic:
         c.setFont("SerifItalic", 9); c.setFillColor(INK)
         mark = "  ".join(m for m in (tempo, dynamic) if m)
         c.drawString(x0 + 48, yb + 4 * LINE + 15, mark)
-    left = x0 + 48
+    left = sig_end + 18
     width = x1 - left
     total = sum(d for _, _, d, _ in evs)
     # Uniform baseline for note names, below the lowest notehead or down-stem.
@@ -206,9 +212,10 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
 
     def annotate(k, kind, payload, label):
         x, ys = pos[k]
-        if show_fingers and label:
+        finger = label[0] if isinstance(label, tuple) else label
+        if show_fingers and finger:
             c.setFont("Serif", 8.5); c.setFillColor(ACCENT)
-            c.drawCentredString(x, yb + 4 * LINE + 8, str(label))
+            c.drawCentredString(x, yb + 4 * LINE + 8, str(finger))
         if show_names and kind != "rest":
             c.setFont("Serif", 8.5); c.setFillColor(GRAY)
             c.drawCentredString(x, name_y, event_name(kind, payload))
@@ -239,12 +246,13 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
             draw_rest(c, x, yb, dur)
             i += 1
             continue
-        if kind == "note" and dur == 0.5 and i + 1 < len(evs) \
-                and evs[i + 1][0] == "note" and evs[i + 1][2] == 0.5:
-            # A run of eighth notes: shared beam instead of flags.
+        if kind == "note" and dur in (0.25, 0.5) and i + 1 < len(evs) \
+                and evs[i + 1][0] == "note" and evs[i + 1][2] == dur:
+            # A run of eighth/sixteenth notes: shared beam(s).
             j = i
-            beam_limit = i + (3 if time == (6, 8) else len(evs))
-            while j < len(evs) and j < beam_limit and evs[j][0] == "note" and evs[j][2] == 0.5:
+            group = 3 if time == (6, 8) and dur == 0.5 else (4 if dur == 0.25 else len(evs))
+            beam_limit = i + group
+            while j < len(evs) and j < beam_limit and evs[j][0] == "note" and evs[j][2] == dur:
                 j += 1
             ys = [pos[k][1][0] for k in range(i, j)]
             up = sum(ys) / len(ys) < yb + 2 * LINE
@@ -260,6 +268,9 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
             c.setFillColor(INK)
             xa = pos[i][0] + (2.7 if up else -2.7)
             c.rect(xa, by - 2.4 if up else by, pos[j - 1][0] - pos[i][0], 2.4, fill=1, stroke=0)
+            if dur == 0.25:
+                c.rect(xa, by - 6 if up else by + 3.6,
+                       pos[j - 1][0] - pos[i][0], 2.4, fill=1, stroke=0)
             i = j
             continue
         lo, hi = heads(x, kind, payload, dur)
@@ -277,13 +288,25 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
         annotate(i, kind, payload, label)
         i += 1
     # Barlines every bar.
+    # Ties connect a note to the immediately following same-pitch note.
+    for k, ev in enumerate(evs[:-1]):
+        label = ev[3]
+        if ev[0] == "note" and isinstance(label, tuple) and label[1] \
+                and evs[k + 1][0] == "note" and evs[k + 1][1] == ev[1]:
+            x0t, yt = pos[k][0], pos[k][1][0]
+            x1t = pos[k + 1][0]
+            c.setLineWidth(0.7); c.setStrokeColor(INK)
+            c.bezier(x0t + 4, yt - 4, x0t + 10, yt - 11,
+                     x1t - 10, yt - 11, x1t - 4, yt - 4)
     beat = 0.0
+    next_bar = pickup or bar_beats
     for _, _, dur, _ in evs:
         beat += dur
-        if abs(beat % bar_beats) < 1e-9 and beat < total:
+        if abs(beat - next_bar) < 1e-9 and beat < total:
             bx = left + width * (beat / total)
             c.setLineWidth(0.55); c.setStrokeColor(HexColor("#222222"))
             c.line(bx, yb, bx, yb + 4 * LINE)
+            next_bar += bar_beats
     bx = x1
     c.setLineWidth(0.55); c.line(bx, yb, bx, yb + 4 * LINE)
     c.setLineWidth(2.2); c.line(bx - 3.5, yb, bx - 3.5, yb + 4 * LINE)
@@ -323,7 +346,7 @@ def build(path):
     register_fonts()
     d = Doc(path)
 
-    d.h1("Day One at the Piano")
+    d.h1("Day 1: Meet the Piano")
     d.c.setFont("SerifItalic", 12); d.c.setFillColor(GRAY)
     d.c.drawString(MARGIN, d.y - 4, "A first lesson for grown-up beginners — about 30 relaxed minutes")
     d.y -= 24

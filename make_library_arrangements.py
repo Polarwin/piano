@@ -110,11 +110,42 @@ HAYDN_SURPRISE = {
     ],
 }
 
+BUTTERFLY_LOVERS = {
+    "title": "The Butterfly Lovers",
+    "subtitle": "Traditional Chinese-inspired theme — Month 4–6 learner edition",
+    "key_sig": 1, "minor": False, "time": [6, 8], "bpm": 66,
+    "tempo_mark": "Tenderly", "accompaniment": "flowing",
+    "sections": [{"bar": 0, "name": "Opening theme", "dynamic": "mp"},
+                 {"bar": 8, "name": "Return, with warmth", "dynamic": "mf"}],
+    # Original short educational adaptation in G major.  It is not a copy of
+    # the VIP Tan8 engraving; the melody and accompaniment are deliberately
+    # shortened and kept within a comfortable two-hand range.
+    "bars": [
+        {"chord":"G",  "melody":[["G4",.5],["A4",.5],["B4",.5],["D5",1.5]]},
+        {"chord":"Em", "melody":[["E5",1],["D5",.5],["B4",.5],["A4",1]]},
+        {"chord":"G",  "melody":[["G4",.5],["A4",.5],["B4",.5],["D5",1.5]]},
+        {"chord":"D",  "melody":[["E5",1.5],["D5",.5],["B4",1]]},
+        {"chord":"C",  "melody":[["A4",.5],["B4",.5],["D5",1],["E5",1]]},
+        {"chord":"G",  "melody":[["D5",1],["B4",.5],["A4",.5],["G4",1]]},
+        {"chord":"D",  "melody":[["G4",.5],["A4",.5],["B4",1],["D5",1]]},
+        {"chord":"G",  "melody":[["G4",3]]},
+        {"chord":"G",  "melody":[["B4",.5],["D5",.5],["E5",1],["D5",1]]},
+        {"chord":"Em", "melody":[["B4",.5],["A4",.5],["G4",1],["A4",1]]},
+        {"chord":"C",  "melody":[["B4",.5],["D5",.5],["E5",1],["G5",1]]},
+        {"chord":"D",  "melody":[["F#5",1.5],["E5",.5],["D5",1]]},
+        {"chord":"G",  "melody":[["B4",.5],["D5",.5],["E5",1],["D5",1]]},
+        {"chord":"C",  "melody":[["B4",.5],["A4",.5],["G4",1],["A4",1]]},
+        {"chord":"D",  "melody":[["B4",.5],["A4",.5],["G4",1],["F#4",1]]},
+        {"chord":"G",  "melody":[["G4",3]]},
+    ],
+}
+
 ARRANGEMENTS = {
     "amazing-grace": ("Amazing_Grace", AMAZING_GRACE),
     "twinkle": ("Mozart_Twinkle_Theme", TWINKLE),
     "eine-kleine": ("Mozart_Eine_Kleine_Nachtmusik", EINE_KLEINE),
     "haydn-surprise": ("Haydn_Surprise_Symphony", HAYDN_SURPRISE),
+    "butterfly-lovers": ("Butterfly_Lovers_Learner_Edition", BUTTERFLY_LOVERS),
 }
 
 

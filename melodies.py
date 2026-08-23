@@ -112,9 +112,9 @@ MELODIES = {
                N("C4",1,1),N("E4",1,3),N("G4",1,5),N("E4",1,3),
                N("D4",1,2),N("D4",1,2),N("C4",2,1)],
         "lh": None},
-    # Beethoven — Für Elise opening motif (A minor)
+    # Beethoven — Für Elise opening motif (A minor, accidentals inline)
     "fur_elise": {
-        "time": (4, 4), "bpm": 60,
+        "time": (4, 4), "bpm": 60, "key_sig": 0,
         "rh": [N("E5",0.5,5),N("D#5",0.5,4),N("E5",0.5,5),N("D#5",0.5,4),
                N("E5",0.5,5),N("B4",0.5,2),N("D5",0.5,4),N("C5",0.5,3),
                N("A4",4,1),
@@ -143,7 +143,7 @@ MELODIES = {
                N("C3",1,5),CH("E3 G3",1,"3-1"),CH("E3 G3",1,"3-1")]},
     # Bach/Petzold — Minuet in G, opening phrase (3/4)
     "minuet_in_g": {
-        "time": (3, 4), "bpm": 72,
+        "time": (3, 4), "bpm": 72, "key_sig": 1,
         "rh": [N("D5",1,5),N("G4",0.5,1),N("A4",0.5,2),N("B4",0.5,3),N("C5",0.5,4),
                N("D5",1,5),N("G4",1,1),N("G4",1,1),
                N("E5",1,4),N("C5",0.5,1),N("D5",0.5,2),N("E5",0.5,3),N("F#5",0.5,4),
@@ -157,7 +157,7 @@ MELODIES = {
         "lh": LH([C_, G_, AM, EM, F_, C_, F_, G_], 4)},
     # Traditional — Amazing Grace (melody over held chords)
     "amazing_grace": {
-        "time": (4, 4), "bpm": 56,
+        "time": (4, 4), "bpm": 56, "key_sig": -1,
         "rh": [N("C4",1,1),N("F4",1.5,4),N("A4",0.5,5),N("G4",1,4),
                N("F4",2,4),N("A4",1,5),N("F4",1,4),
                N("A4",1,5),N("C5",1.5,5),N("A4",0.5,4),N("F4",1,2),
@@ -167,7 +167,7 @@ MELODIES = {
         "lh": LH([F_, F_, F_, C_, F_, C_], 4)},
     # After Schumann — Träumerei opening phrase, simplified (expressive shaping)
     "traumerei": {
-        "time": (4, 4), "bpm": 52,
+        "time": (4, 4), "bpm": 52, "key_sig": -1,
         "rh": [N("C5",2,5),N("A4",1,3),N("F4",1,1),
                N("A4",1.5,3),N("G4",0.5,2),N("F4",2,1),
                N("E4",2,1),N("G4",1,2),N("C5",1,5),
@@ -194,7 +194,7 @@ MELODIES = {
                N("C3",1,5),CH("E3 G3",1,"3-1"),CH("E3 G3",1,"3-1")]},
     # G major scale, one octave up and down (with F#)
     "g_major_scale": {
-        "time": (4, 4), "bpm": 60,
+        "time": (4, 4), "bpm": 60, "key_sig": 1,
         "rh": [N("G4",1,1),N("A4",1,2),N("B4",1,3),N("C5",1,1),
                N("D5",1,2),N("E5",1,3),N("F#5",1,4),N("G5",1,5),
                N("G5",1,5),N("F#5",1,4),N("E5",1,3),N("D5",1,2),
@@ -204,7 +204,7 @@ MELODIES = {
     # ---- Month Two ---------------------------------------------------------
     # F major scale, one octave up and down (with Bb; RH fingering 1234 1234)
     "f_major_scale": {
-        "time": (4, 4), "bpm": 60,
+        "time": (4, 4), "bpm": 60, "key_sig": -1,
         "rh": [N("F4",1,1),N("G4",1,2),N("A4",1,3),N("Bb4",1,4),
                N("C5",1,1),N("D5",1,2),N("E5",1,3),N("F5",1,4),
                N("F5",1,4),N("E5",1,3),N("D5",1,2),N("C5",1,1),
@@ -213,7 +213,7 @@ MELODIES = {
     # F major scale, left hand, one octave up and down (with Bb;
     # standard LH fingering 5 4 3 2 1 3 2 1 ascending)
     "f_major_scale_lh": {
-        "time": (4, 4), "bpm": 60,
+        "time": (4, 4), "bpm": 60, "key_sig": -1,
         "rh": None,
         "lh": [N("F2",1,5),N("G2",1,4),N("A2",1,3),N("Bb2",1,2),
                N("C3",1,1),N("D3",1,3),N("E3",1,2),N("F3",1,1),
@@ -225,7 +225,7 @@ MELODIES = {
     # 4/4 so the lesson needs no new meter. D major chord on bars 4 and 6
     # gives a D7 colour under the melody's C (dominant of G).
     "lightly_row": {
-        "time": (4, 4), "bpm": 72,
+        "time": (4, 4), "bpm": 72, "key_sig": 1,
         "rh": [N("D5",1,5),N("B4",1,3),N("B4",2,3),
                N("C5",1,4),N("A4",1,2),N("A4",2,2),
                N("D5",1,5),N("B4",1,3),N("B4",2,3),
@@ -253,7 +253,7 @@ MELODIES = {
     # from Day 47 opens almost every bar. Two five-finger positions: low
     # (E4-B4) for lines 1 and 4, high (A4-E5) for lines 2 and 3.
     "scarborough_fair": {
-        "time": (3, 4), "bpm": 56,
+        "time": (3, 4), "bpm": 56, "key_sig": 1,
         "rh": [N("E4",1.5,1),N("E4",0.5,1),N("B4",1,5),
                N("B4",1,5),N("F#4",1.5,2),N("G4",0.5,3),
                N("F#4",1,2),N("E4",2,1),

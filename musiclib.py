@@ -210,23 +210,31 @@ def write_midi(score, path):
             (0, 1, bytes([0xFF, 0x58, 0x04, num, dd, 0x18, 0x08])),
             (0, 1, bytes([0xFF, 0x59, 0x02]) + struct.pack("b", score["key_sig"]) + bytes([1 if score["minor"] else 0]))]
     bar_beats = num * 4 / den
+    bar_offsets = []
+    cursor = 0.0
+    for item in score["bars"]:
+        bar_offsets.append(cursor)
+        cursor += item.get("_beats", bar_beats)
     for bar in range(len(score["bars"])):
         us = round(60_000_000 / bpms[bar])
-        meta.append((bar * bar_beats * PPQ, 2, b"\xff\x51\x03" + us.to_bytes(3, "big")))
+        meta.append((round(bar_offsets[bar] * PPQ), 2,
+                     b"\xff\x51\x03" + us.to_bytes(3, "big")))
     notes = [(0, 0, bytes([0xC0, 0])), (0, 0, bytes([0xC1, 0]))]
     for bar, m in enumerate(score["bars"]):
-        base = bar * bar_beats * PPQ
+        actual_beats = m.get("_beats", bar_beats)
+        base = round(bar_offsets[bar] * PPQ)
         notes += [(base, 0, bytes([0xB0, 64, 100])),
-                  (base + bar_beats * PPQ - 30, 0, bytes([0xB0, 64, 0]))]
+                  (base + round(actual_beats * PPQ) - 30, 0, bytes([0xB0, 64, 0]))]
         vel0 = dyn_vel(section_at(score, bar)[1])
         swell = int(6 * math.sin((bar % 8) / 7 * math.pi))
         # Right hand: single notes. Left hand: possibly chords.
         for hand, channel, vscale in [("rh", 0, 1.0), ("lh", 1, 0.74)]:
             t = base
             for ev in m[hand]:
-                group, dur = (ev if hand == "lh" else ([ev[0]], ev[1]))
+                group, dur = (ev[:2] if hand == "lh" else ([ev[0]], ev[1]))
+                sound_dur = ev[2] if len(ev) > 2 else dur
                 vel = max(30, min(100, int((vel0 + swell) * vscale)))
-                length = max(60, int(dur * PPQ * 0.92))
+                length = max(60, int(sound_dur * PPQ * 0.92))
                 for n in group:
                     notes += [(t, 2, bytes([0x90 | channel, n, vel])),
                               (t + length, 1, bytes([0x80 | channel, n, 40]))]
@@ -242,8 +250,8 @@ def render_audio(score, path, sr=32000):
     bpms = bpm_map(score)
     bar_beats = score["time"][0] * 4 / score["time"][1]
     starts = [0.0]
-    for bar in range(len(score["bars"])):
-        starts.append(starts[-1] + 60 * bar_beats / bpms[bar])
+    for bar, item in enumerate(score["bars"]):
+        starts.append(starts[-1] + 60 * item.get("_beats", bar_beats) / bpms[bar])
     duration = starts[-1] + 4.0
     mix = array("f", [0.0]) * int(duration * sr)
     TBL = 8192
@@ -277,14 +285,15 @@ def render_audio(score, path, sr=32000):
         for hand, vscale in [("rh", 1.0), ("lh", 0.74)]:
             beat = 0.0
             for ev in m[hand]:
-                group, dur = ev
+                group, dur = ev[:2]
+                sound_dur = ev[2] if len(ev) > 2 else dur
                 if not isinstance(group, (list, tuple)):
                     group = [group]
                 vel = int((vel0 + swell) * vscale)
                 for n in group:
                     if n is None:
                         continue          # rest
-                    add_note(starts[bar] + beat * spb, n, dur, vel, hand, bpms[bar])
+                    add_note(starts[bar] + beat * spb, n, sound_dur, vel, hand, bpms[bar])
                 beat += dur
     peak = max(max(mix), -min(mix), 0.001)
     gain = 0.92 / peak
@@ -360,8 +369,8 @@ def draw_key_sig(c, x, key_sig, bottom_y, clef):
     c.setFont("Music", 9); c.setFillColor(INK)
     for i in range(abs(key_sig)):
         step = SIG_POS[clef][kind][i]
-        c.drawString(x + i * 6, bottom_y + step * STEP - 3.2, glyph)
-    return x + abs(key_sig) * 6 + 4
+        c.drawString(x + i * 8.5, bottom_y + step * STEP - 3.2, glyph)
+    return x + abs(key_sig) * 8.5 + 4
 
 def draw_hand(c, events, spelled, x0, x1, bottom_y, clef, sig_default):
     """events: [(dur, [midi,...]), ...]; spelled: parallel letter/acc/octave lists."""

@@ -10,7 +10,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import HexColor
 
 import musiclib
-from musiclib import draw_notehead, draw_ledger, draw_flag, staff_y, register_fonts, LINE, STEP
+from musiclib import (draw_notehead, draw_ledger, draw_flag, draw_key_sig,
+                      staff_y, register_fonts, LINE, STEP)
 from lesson_day_one import (Doc, MARGIN, INK, GRAY, ACCENT, W, H,
                             as_events, note_ys, draw_rest, draw_acc, event_name,
                             split_bars)
@@ -21,13 +22,13 @@ OUT = "/srv/files/piano/lessons" if os.path.isdir("/srv/files/piano/lessons") an
 # grand-staff exercise: both hands, beats aligned
 # --------------------------------------------------------------------------
 def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
-                   time=(4, 4), tempo=None, dynamic=None):
+                   time=(4, 4), tempo=None, dynamic=None, key_sig=0, pickup=0):
     """rh/lh: v1 tuples or v2 events (see as_events); equal total beats."""
     rh, lh = as_events(rh), as_events(lh)
     bar_beats = time[0] * 4 / time[1]
     if max(len(rh), len(lh)) > 12:
-        rbars = split_bars(rh, bar_beats)
-        lbars = split_bars(lh, bar_beats)
+        rbars = split_bars(rh, bar_beats, pickup)
+        lbars = split_bars(lh, bar_beats, pickup)
         chunks, cur_r, cur_l, count = [], [], [], 0
         for k, rbar in enumerate(rbars):
             lbar = lbars[k] if k < len(lbars) else []
@@ -43,7 +44,8 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
         if len(chunks) > 1:
             for k, (rc, lc) in enumerate(chunks):
                 grand_exercise(doc, rc, lc, show_names, show_fingers, time,
-                               tempo if k == 0 else None, dynamic if k == 0 else None)
+                               tempo if k == 0 else None, dynamic if k == 0 else None,
+                               key_sig, pickup if k == 0 else 0)
                 doc.gap(6)
             return
     doc.need(182)
@@ -59,17 +61,20 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
     c.drawString(x0 + 2, yt - 7, "\U0001D11E")
     c.setFont("Clef", 21)
     c.drawString(x0 + 2, yb + 3, "\U0001D122")
+    xt = draw_key_sig(c, x0 + 28, key_sig, yt, "treble")
+    xb = draw_key_sig(c, x0 + 28, key_sig, yb, "bass")
+    sig_end = max(xt, xb)
     c.setFont("Serif", 12)
     for yy in (yt, yb):
-        c.drawString(x0 + 30, yy + 12, str(time[0]))
-        c.drawString(x0 + 30, yy + 2, str(time[1]))
+        c.drawString(sig_end, yy + 12, str(time[0]))
+        c.drawString(sig_end, yy + 2, str(time[1]))
     if tempo or dynamic:
         c.setFont("SerifItalic", 9); c.setFillColor(INK)
         c.drawString(x0 + 48, yt + 4 * LINE + 15,
                      "  ".join(m for m in (tempo, dynamic) if m))
     c.setLineWidth(0.9)
     c.line(x0, yb, x0, yt + 4 * LINE)
-    left = x0 + 48
+    left = sig_end + 18
     width = x1 - left
     total = sum(d for _, _, d, _ in rh)
     lowest = yb  # lowest ink, for advancing the cursor afterwards
@@ -77,11 +82,13 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
     def draw_hand(evs, bottom, clef):
         nonlocal lowest
         beat = 0.0
+        drawn = []
         for kind, payload, dur, label in evs:
             x = left + width * (beat / total) + (width / total) * 0.35
             c.setLineWidth(0.9); c.setStrokeColor(INK)
             if kind == "rest":
                 draw_rest(c, x, bottom, dur)
+                drawn.append((x, kind, payload, label, None))
                 beat += dur
                 continue
             tones = payload if isinstance(payload, list) else [payload]
@@ -105,13 +112,16 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
                 c.line(sx, hi if up else lo, sx, end)
                 if dur <= 0.5:
                     draw_flag(c, sx, end, up)
+                    if dur == 0.25:
+                        draw_flag(c, sx, end - (4 if up else -4), up)
             if dur in (1.5, 3):
                 c.setFillColor(INK)
                 c.circle(x + 6.5, hi + (STEP if round((hi - bottom) / STEP) % 2 == 0 else 0),
                          0.9, fill=1, stroke=0)
-            if show_fingers and label:
+            finger = label[0] if isinstance(label, tuple) else label
+            if show_fingers and finger:
                 c.setFont("Serif", 8.5); c.setFillColor(ACCENT)
-                c.drawCentredString(x, bottom + 4 * LINE + 8, str(label))
+                c.drawCentredString(x, bottom + 4 * LINE + 8, str(finger))
             if show_names:
                 # Name under the notehead; for down-stems shift left of the stem.
                 c.setFont("Serif", 8.5); c.setFillColor(GRAY)
@@ -119,13 +129,22 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
                     c.drawRightString(x - 6, lo - 8, event_name(kind, payload))
                 else:
                     c.drawCentredString(x, lo - 8, event_name(kind, payload))
+            drawn.append((x, kind, payload, label, lo))
             beat += dur
+        for current, following in zip(drawn, drawn[1:]):
+            x, kind, payload, label, y = current
+            nx, nkind, npayload, _, _ = following
+            if kind == "note" and isinstance(label, tuple) and label[1] \
+                    and nkind == "note" and payload == npayload:
+                c.setLineWidth(0.7); c.setStrokeColor(INK)
+                c.bezier(x + 4, y - 4, x + 10, y - 11,
+                         nx - 10, y - 11, nx - 4, y - 4)
 
     draw_hand(rh, yt, "treble")
     draw_hand(lh, yb, "bass")
 
     # barlines across both staves, plus final double bar
-    beat = float(bar_beats)
+    beat = float(pickup or bar_beats)
     c.setStrokeColor(HexColor("#222222"))
     while beat < total - 1e-9:
         bx = left + width * (beat / total)
@@ -143,7 +162,7 @@ def build(path):
     register_fonts()
     d = Doc(path)
 
-    d.h1("Day Two at the Piano")
+    d.h1("Day 2: Both Hands Together")
     d.c.setFont("SerifItalic", 12); d.c.setFillColor(GRAY)
     d.c.drawString(MARGIN, d.y - 4, "Both hands together — about 30 relaxed minutes")
     d.y -= 24
@@ -209,8 +228,8 @@ def build(path):
          ("G",4,1,5),("F",4,1,4),("E",4,1,3),("D",4,1,2),
          ("C",4,1,1),("C",4,1,1),("D",4,1,2),("E",4,1,3),
          ("D",4,1.5,2),("C",4,0.5,1),("C",4,2,1)],
-        [("C",3,4,5),("C",3,4,5),("C",3,4,5),("G",2,4,1),
-         ("C",3,4,5),("C",3,4,5),("G",2,4,1),("C",3,4,5)])
+        [("C",3,4,5),("C",3,4,5),("C",3,4,5),("G",3,4,1),
+         ("C",3,4,5),("C",3,4,5),("G",3,4,1),("C",3,4,5)])
 
     d.h2("7. Your first-week plan")
     d.bullets([

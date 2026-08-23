@@ -36,38 +36,63 @@ ODE_RH = [("E",4,1,3),("E",4,1,3),("F",4,1,4),("G",4,1,5),
           ("G",4,1,5),("F",4,1,4),("E",4,1,3),("D",4,1,2),
           ("C",4,1,1),("C",4,1,1),("D",4,1,2),("E",4,1,3),
           ("D",4,1.5,2),("C",4,0.5,1),("C",4,2,1)]
-ODE_LH = [("C",3,4,5),("C",3,4,5),("C",3,4,5),("G",2,4,1),
-          ("C",3,4,5),("C",3,4,5),("G",2,4,1),("C",3,4,5)]
+ODE_LH = [("C",3,4,5),("C",3,4,5),("C",3,4,5),("G",3,4,1),
+          ("C",3,4,5),("C",3,4,5),("G",3,4,1),("C",3,4,5)]
 HCB_LH = [("C",3,4,5)] * 8
 REST = []
 
 def to_midi(notes):
     """v1 tuples or v2 events -> (midi | [midi, ...] | None, dur) list."""
     out = []
-    for kind, payload, dur, _ in as_events(notes):
+    evs = as_events(notes)
+    skip_attack = False
+    for i, (kind, payload, dur, label) in enumerate(evs):
+        if skip_attack:
+            out.append((None, dur))
+            skip_attack = False
+            continue
         if kind == "rest":
             out.append((None, dur))
         elif kind == "chord":
             out.append(([musiclib.midi_note(f"{l}{a}{o}") for l, a, o in payload], dur))
         else:
             l, a, o = payload
-            out.append((musiclib.midi_note(f"{l}{a}{o}"), dur))
+            note = musiclib.midi_note(f"{l}{a}{o}")
+            tied = isinstance(label, tuple) and label[1]
+            if tied and i + 1 < len(evs) and evs[i + 1][0] == "note" \
+                    and evs[i + 1][1] == payload:
+                out.append((note, dur, dur + evs[i + 1][2]))
+                skip_attack = True
+            else:
+                out.append((note, dur))
     return out
 
-def chunk(notes, beats=4):
+def chunk(notes, beats=4, pickup=0):
     """Split (group, dur) list into bars of `beats`."""
     bars, cur, total = [], [], 0.0
-    for n, d in notes:
-        cur.append((n, d)); total += d
-        if abs(total - beats) < 1e-9:
+    target = pickup or beats
+    for ev in notes:
+        n, d = ev[:2]
+        cur.append(ev); total += d
+        if abs(total - target) < 1e-9:
             bars.append(cur); cur, total = [], 0.0
+            target = beats
+    if cur and pickup and abs(total - (beats - pickup)) < 1e-9:
+        bars.append(cur); cur = []
     assert not cur, f"last bar incomplete ({total} beats)"
     return bars
 
-def chunk_hand(notes, beats=4):
+def chunk_hand(notes, beats=4, pickup=0):
     """Wrap single notes/rests as groups so both hands share one shape."""
-    return [[(n if isinstance(n, (list, tuple)) or n is None else [n], d)
-             for n, d in bar] for bar in chunk(notes, beats)]
+    out = []
+    for bar in chunk(notes, beats, pickup):
+        converted = []
+        for ev in bar:
+            n, d = ev[:2]
+            group = n if isinstance(n, (list, tuple)) or n is None else [n]
+            converted.append((group, d, ev[2]) if len(ev) > 2 else (group, d))
+        out.append(converted)
+    return out
 
 def lesson_score(title, exercises, bpm=66):
     """exercises: [(rh_notes, lh_notes, meta), ...]; None = silent hand.
@@ -84,12 +109,17 @@ def lesson_score(title, exercises, bpm=66):
             bars.append({"rh": [], "lh": []})          # one bar of silence
         if meta.get("dynamic"):
             sections.append({"bar": len(bars), "name": "", "dynamic": meta["dynamic"]})
-        rh_bars = chunk_hand(to_midi(rh), beats) if rh else []
-        lh_bars = chunk_hand(to_midi(lh), beats) if lh else []
+        pickup = float(meta.get("pickup", 0) or 0)
+        rh_bars = chunk_hand(to_midi(rh), beats, pickup) if rh else []
+        lh_bars = chunk_hand(to_midi(lh), beats, pickup) if lh else []
         n = max(len(rh_bars), len(lh_bars))
         for i in range(n):
+            hand_bar = (rh_bars[i] if i < len(rh_bars) else
+                        lh_bars[i] if i < len(lh_bars) else [])
+            duration = sum(ev[1] for ev in hand_bar) or beats
             bars.append({"rh": rh_bars[i] if i < len(rh_bars) else [],
-                         "lh": lh_bars[i] if i < len(lh_bars) else []})
+                         "lh": lh_bars[i] if i < len(lh_bars) else [],
+                         "_beats": duration})
     return {"title": title, "bpm": bpm, "rit": False, "time": time,
             "sections": sections or [{"bar": 0, "name": "", "dynamic": "mp"}],
             "bars": bars}

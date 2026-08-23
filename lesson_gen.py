@@ -33,6 +33,8 @@ JSON schema (strict):
         "melody": "ode_to_joy",      // optional: reviewed notes are injected for this key —
                                      // then omit "rh"/"lh" entirely (see list below)
         "time": [3, 4],              // optional; one of [2,4], [3,4], [4,4], [6,8]
+        "key_sig": 0,                // optional: -7..7 fifths (1=G, 2=D, 3=A, -1=F)
+        "pickup": 0.5,               // optional incomplete first measure, in quarter-note beats
         "tempo": "Slowly",           // optional text mark shown above the staff
         "dynamic": "p",              // optional: ppp pp p mp mf f ff
         "bpm": 56,                   // optional play-along tempo, 40-120
@@ -44,20 +46,21 @@ JSON schema (strict):
 }}
 
 Hand entries — each hand is a list mixing these forms:
-- Note: ["letter", octave, duration, finger] — letter A-G, optionally with # or b (only if the lesson teaches that accidental), octave 2-5, duration one of 0.5, 1, 1.5, 2, 3, 4 (quarter = 1), finger 1-5 (thumb = 1).
+- Note: ["letter", octave, duration, finger, tie] — letter A-G, optionally with # or b, octave 2-5, duration one of 0.25, 0.5, 1, 1.5, 2, 3, 4 (quarter = 1), finger 1-5; optional boolean tie means hold into the immediately following same-pitch note without another attack.
 - Rest: ["R", duration] — same duration set.
 - Chord (real simultaneous notes): {{"chord": [["C", 3], ["E", 3], ["G", 3]], "dur": 4, "fingers": "1-3-5"}} — 2-4 tones within one hand's span; "fingers" optional.
 
 Rules:
 - Audience: an adult absolute beginner. Warm, plain language, short paragraphs. 4-7 sections, 1-4 exercises.
-- Every exercise's durations must sum to a multiple of the bar length (4 beats in 4/4, 3 in 3/4 or 6/8, 2 in 2/4); no single note may be longer than one bar, and no note may cross a barline. In 6/8, use six eighth notes (0.5 each) or two dotted-quarter beats (1.5 each), and explain/count two large beats rather than three quarter-note beats. All exercises in one lesson share the same time signature.
+- Without a pickup, every measure must sum to exactly the time signature. With "pickup", the first measure has that duration and the final measure must have the complementary duration. No measure may be over-full or under-full. Events may end at but not cross barlines. A tied note may continue the same pitch across a boundary. In 6/8, use six eighth notes (0.5 each) or two dotted-quarter beats (1.5 each), and explain/count two large beats rather than three quarter-note beats. All exercises in one lesson share the same time signature.
+- Set "key_sig" correctly for every non-C key: 1 for G major/E minor, 2 for D major/B minor, 3 for A major/F# minor, -1 for F major/D minor, -2 for Bb major/G minor, etc. Do not rely only on inline accidentals.
 - Both hands of one exercise must have equal total beats. Keep hands in five-finger positions (left C2-G2 area, right C4-G5 area) unless the lesson specifically moves beyond them.
 - Chords are now supported — prefer genuine chords over broken-chord workarounds when the lesson is about chords. Keep them slow (half or whole notes) for beginners.
 - Exercises must fit the lesson topic and progress gently.
-- If the request names one of these reviewed melodies, the exercise MUST set "melody" to its key and omit "rh"/"lh" (the exact notes are inserted for you; never write them yourself): {melody_keys}. A melody fixes its own time signature — do not set "time" on a melody exercise, and write the lesson's other exercises in that same meter. You may still add your own original exercises (without "melody") in other sections.
+- If the request names one of these reviewed melodies, the exercise MUST set "melody" to its key and omit "rh"/"lh" (the exact notes are inserted for you; never write them yourself): {melody_keys}. A melody fixes its own time signature and key signature — do not set "time" or "key_sig" on a melody exercise, and write the lesson's other exercises in that same meter. You may still add your own original exercises (without "melody") in other sections.
 """
 
-DURS = {0.5, 1, 1.5, 2, 3, 4}
+DURS = {0.25, 0.5, 1, 1.5, 2, 3, 4}
 LETTER_RE = re.compile(r"^[A-G](#|b)?$")
 TIMES = {(2, 4), (3, 4), (4, 4), (6, 8)}
 
@@ -82,7 +85,55 @@ def check_finger(finger, where):
         raise ValueError(f"{where}: bad finger {finger!r}")
     return int(finger)
 
-def validate_hand(notes, where, bar_beats=4):
+SHARP_ORDER = ["F", "C", "G", "D", "A", "E", "B"]
+FLAT_ORDER = ["B", "E", "A", "D", "G", "C", "F"]
+
+
+def infer_key_sig(events):
+    """Infer a key signature (fifths, -7..7) from note accidentals.
+    Returns None if accidentals are ambiguous or chromatic."""
+    acc_map = {}
+    for ev in events or []:
+        if ev[0] == "rest":
+            continue
+        tones = ev[1] if isinstance(ev[1], list) else [ev[1]]
+        for letter, acc, _octave in tones:
+            acc_map.setdefault(letter, set()).add(acc)
+    if not acc_map:
+        return 0
+    all_accs = set().union(*acc_map.values())
+    if all_accs == {""}:
+        return 0
+    if all_accs <= {"", "#"}:
+        sharp_positions = [SHARP_ORDER.index(l) for l, s in acc_map.items() if "#" in s]
+        if not sharp_positions:
+            return 0
+        n = max(sharp_positions) + 1
+        for l in SHARP_ORDER[:n]:
+            s = acc_map.get(l, set())
+            if s and s != {"#"}:
+                return None
+        for l in SHARP_ORDER[n:]:
+            if "#" in acc_map.get(l, set()):
+                return None
+        return n
+    if all_accs <= {"", "b"}:
+        flat_positions = [FLAT_ORDER.index(l) for l, s in acc_map.items() if "b" in s]
+        if not flat_positions:
+            return 0
+        n = max(flat_positions) + 1
+        for l in FLAT_ORDER[:n]:
+            s = acc_map.get(l, set())
+            if s and s != {"b"}:
+                return None
+        for l in FLAT_ORDER[n:]:
+            if "b" in acc_map.get(l, set()):
+                return None
+        return -n
+    return None
+
+
+def validate_hand(notes, where, bar_beats=4, pickup=0):
     """Returns v2 events: ("note",(letter,acc,octave),dur,finger),
     ("rest",None,dur,None) or ("chord",[(letter,acc,octave),...],dur,fingers)."""
     if notes is None:
@@ -113,15 +164,38 @@ def validate_hand(notes, where, bar_beats=4):
                 raise ValueError(f"{where}: bad octave {item[1]!r}")
             dur = check_dur(item[2], where, bar_beats)
             finger = check_finger(item[3] if len(item) > 3 else None, where)
-            out.append(("note", (letter, acc, octave), dur, finger))
+            tie = bool(item[4]) if len(item) > 4 else False
+            out.append(("note", (letter, acc, octave), dur,
+                        (finger, True) if tie else finger))
         total += out[-1][2]
-        bar_pos = pos % bar_beats
-        if bar_pos + out[-1][2] > bar_beats + 1e-9:
+        first = pickup if pickup else bar_beats
+        if pos < first - 1e-9:
+            remaining = first - pos
+        else:
+            remaining = bar_beats - ((pos - first) % bar_beats)
+        if out[-1][2] > remaining + 1e-9:
             raise ValueError(f"{where}: a {out[-1][2]}-beat event crosses a barline "
-                             f"(starts at beat {bar_pos + 1:g} of a {bar_beats}-beat bar)")
+                             f"({remaining:g} beats remain in the measure)")
         pos += out[-1][2]
     if not out or total % bar_beats != 0:
         raise ValueError(f"{where}: exercise must total a multiple of {bar_beats} beats (got {total})")
+    # Strict per-bar check: every measure must sum exactly to bar_beats (or pickup rules).
+    bar_total = 0.0
+    target = pickup or bar_beats
+    for ev in out:
+        bar_total += ev[2]
+        if abs(bar_total - target) < 1e-9:
+            bar_total = 0.0
+            target = bar_beats
+        elif bar_total > target + 1e-9:
+            raise ValueError(f"{where}: measure sums to {bar_total} beats, expected {target}")
+    if abs(bar_total) > 1e-9:
+        raise ValueError(f"{where}: final measure incomplete ({bar_total} beats left)")
+    for i, event in enumerate(out):
+        label = event[3]
+        if isinstance(label, tuple) and label[1]:
+            if i + 1 >= len(out) or out[i + 1][0] != "note" or out[i + 1][1] != event[1]:
+                raise ValueError(f"{where}: tied note must be followed by the same pitch")
     return out
 
 DYN_RE = re.compile(r"^(ppp|pp|p|mp|mf|f|ff)(.*)$")
@@ -143,7 +217,15 @@ def validate_meta(ex, where, tune=None):
     bpm = ex.get("bpm") or (tune or {}).get("bpm")
     if bpm is not None and not 40 <= int(bpm) <= 120:
         raise ValueError(f"section {where}: bpm must be 40-120")
+    key_sig = int(ex.get("key_sig", (tune or {}).get("key_sig", 0)))
+    if not -7 <= key_sig <= 7:
+        raise ValueError(f"section {where}: key_sig must be -7..7")
+    pickup = float(ex.get("pickup", 0) or 0)
+    bar_beats = time[0] * 4 / time[1]
+    if pickup and (pickup not in DURS or pickup >= bar_beats):
+        raise ValueError(f"section {where}: pickup must be a supported duration shorter than one bar")
     return {"time": time, "tempo": tempo, "dynamic": dynamic,
+            "key_sig": key_sig, "pickup": pickup,
             "bpm": int(bpm) if bpm else None}
 
 def validate(data):
@@ -182,8 +264,8 @@ def validate(data):
             if tune:
                 rh, lh = tune.get("rh"), tune.get("lh")
             else:
-                rh = validate_hand(ex.get("rh"), f"section {i+1} rh", bar_beats)
-                lh = validate_hand(ex.get("lh"), f"section {i+1} lh", bar_beats)
+                rh = validate_hand(ex.get("rh"), f"section {i+1} rh", bar_beats, meta["pickup"])
+                lh = validate_hand(ex.get("lh"), f"section {i+1} lh", bar_beats, meta["pickup"])
             if not rh and not lh:
                 raise ValueError(f"section {i+1}: exercise has no notes")
             if rh and lh:
@@ -191,6 +273,11 @@ def validate(data):
                 tl = sum(e[2] for e in lh)
                 if abs(tr - tl) > 1e-9:
                     raise ValueError(f"section {i+1}: hands differ ({tr} vs {tl} beats)")
+            # Auto-detect key signature from note accidentals when the AI omitted it.
+            if not tune and meta["key_sig"] == 0:
+                inferred = infer_key_sig((rh or []) + (lh or []))
+                if inferred is not None:
+                    meta["key_sig"] = inferred
             sec["exercise"] = {"rh": rh, "lh": lh, "meta": meta}
             n_ex += 1
         if not (sec["paragraphs"] or sec["bullets"] or sec["exercise"]):
@@ -246,6 +333,7 @@ def render(lesson, basename, audio=True):
         if ex:
             rh, lh, meta = ex["rh"], ex["lh"], ex["meta"]
             marks = {"time": meta["time"], "tempo": meta["tempo"] or None,
+                     "key_sig": meta["key_sig"], "pickup": meta["pickup"],
                      "dynamic": meta["dynamic"] or None}
             if rh and lh:
                 grand_exercise(doc, rh, lh, **marks)
