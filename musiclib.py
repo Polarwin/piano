@@ -99,9 +99,9 @@ def build_score(data):
     if not 40 <= score["bpm"] <= 160:
         raise ValueError("bpm must be between 40 and 160")
     num, den = data.get("time", [4, 4])
-    if (num, den) not in [(2, 4), (3, 4), (4, 4)]:
-        raise ValueError("time must be [2,4], [3,4] or [4,4]")
-    bar_beats = num * 4 // den
+    if (num, den) not in [(2, 4), (3, 4), (4, 4), (6, 8)]:
+        raise ValueError("time must be [2,4], [3,4], [4,4] or [6,8]")
+    bar_beats = num * 4 / den
     score["time"] = (num, den)
     if score["accompaniment"] not in ("flowing", "alberti", "waltz", "chords"):
         raise ValueError("accompaniment must be flowing|alberti|waltz|chords")
@@ -146,12 +146,12 @@ def build_score(data):
         acc = score["accompaniment"]
         if acc == "flowing":
             pat = [0, 7, intervals[0] + 12, 7, intervals[0] + 12, 7, intervals[0] + 12, 7]
-            evs = [([36 + root + (p if p < 12 else p)], 0.5) for p in pat[: bar_beats * 2]]
+            evs = [([36 + root + (p if p < 12 else p)], 0.5) for p in pat[: int(bar_beats * 2)]]
         elif acc == "alberti":
             cell = [0, intervals[0] + 12, 7, intervals[0] + 12]
-            evs = [([36 + root + cell[k % 4]], 0.5) for k in range(bar_beats * 2)]
+            evs = [([36 + root + cell[k % 4]], 0.5) for k in range(int(bar_beats * 2))]
         elif acc == "waltz":
-            evs = [([low], 1)] + [(up, 1)] * (bar_beats - 1)
+            evs = [([low], 1)] + [(up, 1)] * (int(bar_beats) - 1)
         else:  # chords
             evs = [([low], bar_beats / 2), ([36 + root + 12] + up, bar_beats / 2)]
         b["lh"] = [(notes, dur) for notes, dur in evs]
@@ -209,7 +209,7 @@ def write_midi(score, path):
     meta = [(0, 0, b"\xff\x03" + vlq(len(title_bytes)) + title_bytes),
             (0, 1, bytes([0xFF, 0x58, 0x04, num, dd, 0x18, 0x08])),
             (0, 1, bytes([0xFF, 0x59, 0x02]) + struct.pack("b", score["key_sig"]) + bytes([1 if score["minor"] else 0]))]
-    bar_beats = num * 4 // den
+    bar_beats = num * 4 / den
     for bar in range(len(score["bars"])):
         us = round(60_000_000 / bpms[bar])
         meta.append((bar * bar_beats * PPQ, 2, b"\xff\x51\x03" + us.to_bytes(3, "big")))
@@ -240,7 +240,7 @@ def write_midi(score, path):
 # --------------------------------------------------------------------------
 def render_audio(score, path, sr=32000):
     bpms = bpm_map(score)
-    bar_beats = score["time"][0] * 4 // score["time"][1]
+    bar_beats = score["time"][0] * 4 / score["time"][1]
     starts = [0.0]
     for bar in range(len(score["bars"])):
         starts.append(starts[-1] + 60 * bar_beats / bpms[bar])

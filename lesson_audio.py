@@ -75,7 +75,7 @@ def lesson_score(title, exercises, bpm=66):
     metas = [ex[2] for ex in exercises if len(ex) > 2 and ex[2]]
     time = tuple(metas[0]["time"]) if metas and metas[0].get("time") else (4, 4)
     bpm = int(metas[0]["bpm"]) if metas and metas[0].get("bpm") else bpm
-    beats = time[0] * 4 // time[1]
+    beats = time[0] * 4 / time[1]
     bars, sections = [], []
     for k, ex in enumerate(exercises):
         rh, lh = ex[0], ex[1]

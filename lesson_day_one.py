@@ -160,7 +160,7 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
              time=(4, 4), tempo=None, dynamic=None):
     """notes: v1 tuples or v2 events (see as_events). Barlines per time sig."""
     evs = as_events(notes)
-    bar_beats = time[0] * 4 // time[1]
+    bar_beats = time[0] * 4 / time[1]
     if len(evs) > 16:
         chunks = bar_chunks(evs, bar_beats, 16)
         if len(chunks) > 1:
@@ -243,7 +243,8 @@ def exercise(doc, notes, clef="treble", show_names=True, show_fingers=True,
                 and evs[i + 1][0] == "note" and evs[i + 1][2] == 0.5:
             # A run of eighth notes: shared beam instead of flags.
             j = i
-            while j < len(evs) and evs[j][0] == "note" and evs[j][2] == 0.5:
+            beam_limit = i + (3 if time == (6, 8) else len(evs))
+            while j < len(evs) and j < beam_limit and evs[j][0] == "note" and evs[j][2] == 0.5:
                 j += 1
             ys = [pos[k][1][0] for k in range(i, j)]
             up = sum(ys) / len(ys) < yb + 2 * LINE

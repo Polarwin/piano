@@ -24,6 +24,12 @@ intermediate examination level.
 
 ## Engine work required first
 
+Implementation status (2026-08-23): genuine 6/8 validation, display, timing,
+audio and single-staff 3+3 beaming are implemented. Pickup and tied-event
+engraving remain deferred, so Days 62–63 use honest listening/counting drills
+and explicitly identify the notation limitation. They do not simulate a tie
+with a repeated attack or disguise a padded full bar as an anacrusis.
+
 Do not generate lessons that merely describe notation the software cannot
 engrave or play. Before Month Three generation, add and test:
 

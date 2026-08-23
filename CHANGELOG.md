@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-23 — Month Three curriculum
+
+- Added the complete Days 61–90 adult curriculum: musical phrases and 6/8,
+  D major and dominant seventh harmony, texture and interpretation, and a
+  progressive preparation path for Schumann's *Soldier's March*.
+- Added genuine `[6,8]` validation, engraving timing, 3+3 eighth-note beaming
+  on single staves, MIDI metadata, and play-along timing to the lesson engine.
+- Kept Days 62–63 explicit about the current pickup/tie engraving limitation;
+  their listening and counting drills do not fake ties as repeated attacks or
+  pad a pickup into misleading notation.
+- Generated and audited one PDF and MP3 for every Day 61–90. All PDFs are two
+  to four pages; most audio is under two minutes, with three D-major harmony
+  lessons lasting about 124 seconds.
+- Days 82–90 prepare the authentic Music Library edition of Schumann's
+  *Soldier's March, Op. 68 No. 2* without generating a conflicting rewrite.
+
 ## 2026-08-22 — Reviewed-score matching before transcription
 
 - Song conversion now compares several ten-second windows with local-library

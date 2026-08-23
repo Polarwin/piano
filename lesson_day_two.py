@@ -24,7 +24,7 @@ def grand_exercise(doc, rh, lh, show_names=True, show_fingers=True,
                    time=(4, 4), tempo=None, dynamic=None):
     """rh/lh: v1 tuples or v2 events (see as_events); equal total beats."""
     rh, lh = as_events(rh), as_events(lh)
-    bar_beats = time[0] * 4 // time[1]
+    bar_beats = time[0] * 4 / time[1]
     if max(len(rh), len(lh)) > 12:
         rbars = split_bars(rh, bar_beats)
         lbars = split_bars(lh, bar_beats)

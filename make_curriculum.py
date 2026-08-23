@@ -300,6 +300,47 @@ WEEKS = [
              "lilt. Tips for a calm performance; recall the Day 30 recital "
              "advice."),
     ]),
+    # ---- Month Three (Days 61-90) -----------------------------------------
+    ("Reading real musical phrases", [
+        (61, "Month Three Orientation", "A short Month Two diagnostic covering F major, inversions, dotted rhythms and steady two-hand playing. Help the learner choose two skills to revisit; no new notation."),
+        (62, "Ties You Can Play", "Teach ties within a bar and across a barline: hold one key without a second attack. Because tied-event engraving is not yet available in generated exercises, show supported long-note listening exercises and explain the printed curve honestly; do not fake a tie with repeated notes."),
+        (63, "Pickup Notes", "Teach anacrusis by counting an incomplete opening measure before beat one. Use spoken and keyboard drills, but state honestly that the generated exercise begins at a full bar because partial-measure engraving is not yet available."),
+        (64, "Feeling 6/8", "Introduce genuine 6/8: six eighth notes grouped 3+3, felt as two large dotted-quarter beats. Every exercise MUST use [6,8], with eighth notes grouped musically; clap before playing."),
+        (65, "Playing in 6/8", "Genuine [6,8] two-hand playing: a simple melody in six eighth-note subdivisions over two dotted-quarter bass notes per bar. Count ONE-and-a TWO-and-a."),
+        (66, "Quiet Review Day", "A short relaxed review of ties, pickup counting and genuine [6,8]. All notated exercises use [6,8]; no new skill."),
+        (67, "A Small 6/8 Song", "A short original public-domain-style song in genuine [6,8], not a relabelled 3/4 waltz. Use two dotted-quarter pulses, clear 3+3 grouping, and a simple two-hand texture."),
+    ]),
+    ("D major and dominant seventh harmony", [
+        (68, "Meet D Major", "Introduce the D-major key signature, F sharp and C sharp, and keyboard geography. Short original exercises only."),
+        (69, "D Major Scale Right Hand", "One-octave D major scale, right hand separately, standard fingering 1-2-3-1-2-3-4-5 ascending and reverse descending."),
+        (70, "D Major Scale Left Hand", "One-octave D major scale, left hand separately, standard fingering 5-4-3-2-1-3-2-1 ascending and reverse descending. Do not ask for hands together."),
+        (71, "Chords in D", "D, G and A major as I, IV and V in D. Use genuine simultaneous chord events, slow enough for an adult beginner."),
+        (72, "The Dominant Seventh", "Introduce A7 resolving to D by sound first, then name V7. Use genuine simultaneous chord events and explain the G natural in A7."),
+        (73, "Smooth Changes in D", "Close-position inversions of D, G and A7 with minimal hand movement. Genuine chord events, then a simple right-hand melody."),
+        (74, "Play Day in D", "Optional guided improvisation over D-G-A7-D. Keep it light and non-blocking, with one short notated example."),
+    ]),
+    ("Texture balance and interpretation", [
+        (75, "Month Three Checkpoint", "Self-check ties concept, genuine 6/8, D-major scales hands separately, and D-major harmony. Never test a skill not yet taught."),
+        (76, "Melody and Inner Voice", "Bring out a singing top line while repeated inner notes stay quiet. Use modest spans and slow two-hand exercises."),
+        (77, "Articulation with Purpose", "Combine legato, staccato, accents and breathing at phrase endings in one short original study. Explain the musical reason for each."),
+        (78, "Pedal by Ear", "Clear sustain pedal at every harmony change, using half-length practice segments and listening for blur. Keep notation simple."),
+        (79, "Arpeggio Shapes", "Slow one-octave chord shapes and broken chords, not rapid concert arpeggios or wide stretches."),
+        (80, "Sight Reading in Four Keys", "Four very short reading examples in C, G, F and D, using only learned notes and rhythms. Explain key-signature preparation before playing."),
+        (81, "Ear and Chord Function", "Hear home, away and tension as I, IV and V or V7. A light listening day with one short notated example."),
+    ]),
+    ("Preparing Schumann's Soldier's March", [
+        (82, "Meet Soldier's March", "Prepare Schumann's authentic Soldier's March Op. 68 No. 2 from the Music Library: survey key, 2/4 meter, form, repeated patterns and hard spots. Do not rewrite or claim to reproduce its score; generated notation is only a separate preparatory drill."),
+        (83, "March Rhythm and Chords", "Preparatory rhythm and chord-attack drills for Soldier's March, away from the authentic score. Use 2/4 and genuine chord events."),
+        (84, "First Half Hands Separately", "A practice plan for the first half of the authentic library score: fingering choices, position changes, hands separately, short loops. Generated notes are generic drills, not the piece."),
+        (85, "Second Half Hands Separately", "A practice plan for the second half of the authentic library score: repeated patterns, rests and clean releases. Generated notes are generic drills, not the piece."),
+        (86, "Put the Hands Together", "Combine the authentic piece in two-bar units at a deliberately slow tempo. Include only a generic coordination drill and direct the learner back to the library score."),
+        (87, "Dynamics and Character", "Build a strong but unforced march character with planned dynamics, accents and relaxed arms while practising the authentic library score."),
+        (88, "Repair and Recovery Day", "Isolate weak bars, use stop-before-start-after loops, and practise continuing after a mistake in the authentic library score."),
+    ]),
+    ("Month Three review and recital", [
+        (89, "Month Three Review", "Review genuine 6/8, D major, V7, four-key reading, balance and interpretation, then plan a mock performance of Soldier's March."),
+        (90, "Month Three Recital Soldier's March", "Perform Schumann's authentic Soldier's March Op. 68 No. 2 using the existing Music Library PDF, MIDI and MP3. Do not generate or imply a replacement edition; the exercise is only a brief warm-up and the lesson must direct the learner to the library score."),
+    ]),
 ]
 
 # Days 1, 2 and 6 plus the bonus exist and are not regenerated; used only to

@@ -32,7 +32,7 @@ JSON schema (strict):
       "exercise": {{                 // optional
         "melody": "ode_to_joy",      // optional: reviewed notes are injected for this key —
                                      // then omit "rh"/"lh" entirely (see list below)
-        "time": [3, 4],              // optional, default [4,4]; one of [2,4], [3,4], [4,4]
+        "time": [3, 4],              // optional; one of [2,4], [3,4], [4,4], [6,8]
         "tempo": "Slowly",           // optional text mark shown above the staff
         "dynamic": "p",              // optional: ppp pp p mp mf f ff
         "bpm": 56,                   // optional play-along tempo, 40-120
@@ -50,7 +50,7 @@ Hand entries — each hand is a list mixing these forms:
 
 Rules:
 - Audience: an adult absolute beginner. Warm, plain language, short paragraphs. 4-7 sections, 1-4 exercises.
-- Every exercise's durations must sum to a multiple of the bar length (4 beats in 4/4, 3 in 3/4, 2 in 2/4); no single note may be longer than one bar, and no note may cross a barline (e.g. in 4/4 a 3-beat note cannot start on beat 3). Use [3,4] time when the lesson teaches waltz or triple meter. All exercises in one lesson share the same time signature.
+- Every exercise's durations must sum to a multiple of the bar length (4 beats in 4/4, 3 in 3/4 or 6/8, 2 in 2/4); no single note may be longer than one bar, and no note may cross a barline. In 6/8, use six eighth notes (0.5 each) or two dotted-quarter beats (1.5 each), and explain/count two large beats rather than three quarter-note beats. All exercises in one lesson share the same time signature.
 - Both hands of one exercise must have equal total beats. Keep hands in five-finger positions (left C2-G2 area, right C4-G5 area) unless the lesson specifically moves beyond them.
 - Chords are now supported — prefer genuine chords over broken-chord workarounds when the lesson is about chords. Keep them slow (half or whole notes) for beginners.
 - Exercises must fit the lesson topic and progress gently.
@@ -59,7 +59,7 @@ Rules:
 
 DURS = {0.5, 1, 1.5, 2, 3, 4}
 LETTER_RE = re.compile(r"^[A-G](#|b)?$")
-TIMES = {(2, 4), (3, 4), (4, 4)}
+TIMES = {(2, 4), (3, 4), (4, 4), (6, 8)}
 
 def parse_letter(value, where):
     s = str(value)
@@ -135,7 +135,7 @@ def validate_meta(ex, where, tune=None):
     except (TypeError, IndexError, ValueError):
         raise ValueError(f"section {where}: bad time signature {t!r}")
     if time not in TIMES:
-        raise ValueError(f"section {where}: time must be [2,4], [3,4] or [4,4]")
+        raise ValueError(f"section {where}: time must be [2,4], [3,4], [4,4] or [6,8]")
     tempo = str(ex.get("tempo") or "")[:40]
     dynamic = str(ex.get("dynamic") or "")
     if dynamic and not DYN_RE.match(dynamic):
@@ -178,7 +178,7 @@ def validate(data):
             elif meta["time"] != lesson_time:
                 raise ValueError(f"section {i+1}: all exercises must share one time "
                                  f"signature (first exercise uses {lesson_time})")
-            bar_beats = meta["time"][0] * 4 // meta["time"][1]
+            bar_beats = meta["time"][0] * 4 / meta["time"][1]
             if tune:
                 rh, lh = tune.get("rh"), tune.get("lh")
             else:
