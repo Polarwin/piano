@@ -2,8 +2,8 @@
 """Small LAN web application for the prompt-to-piano composer."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
-from urllib.request import build_opener, HTTPRedirectHandler, Request
+from urllib.parse import quote, quote_plus, unquote, urljoin, urlparse
+from urllib.request import build_opener, HTTPRedirectHandler, Request, urlopen
 import ipaddress, json, mimetypes, os, re, socket, subprocess, tempfile, threading, time, uuid
 import musiclib
 
@@ -96,6 +96,53 @@ def load_levels():
         return json.loads((PUBLISHED / "library" / "levels.json").read_text())
     except Exception:
         return {}
+
+MUTOPIA = "https://www.mutopiaproject.org"
+
+def title_words(value):
+    value = re.sub(r"\s*\[[\w-]{6,}\]\s*$", "", value)
+    value = re.sub(r"[_+]+", " ", value)
+    value = re.sub(r"[^\w\s]", " ", value)
+    return [w.lower() for w in value.split() if len(w) > 1]
+
+def mutopia_search(query):
+    """Search Mutopia for public-domain scores matching the query."""
+    words = title_words(query)
+    if len(words) < 1:
+        return []
+    headers = {"User-Agent": "PianoStudio/1.0 score searcher"}
+    search_query = " ".join(words[:4])
+    url = f"{MUTOPIA}/cgibin/make-table.cgi?searchingfor={quote_plus(search_query)}"
+    try:
+        page = urlopen(Request(url, headers=headers), timeout=15).read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    ids = []
+    for piece_id in re.findall(r"piece-info\.cgi\?id=(\d+)", page):
+        if piece_id not in ids:
+            ids.append(piece_id)
+    results = []
+    for piece_id in ids[:5]:
+        page_url = f"{MUTOPIA}/cgibin/piece-info.cgi?id={piece_id}"
+        try:
+            page = urlopen(Request(page_url, headers=headers), timeout=15).read().decode("utf-8", "replace")
+            heading = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
+            found_title = re.sub(r"<[^>]+>", " ", heading.group(1)) if heading else query
+            found_title = " ".join(found_title.split())
+            midi_url = re.search(r'href="([^"]+\.(?:mid|midi))"', page, re.I)
+            pdf_url = re.search(r'href="([^"]+-a4\.pdf)"', page, re.I)
+            if not midi_url or not pdf_url:
+                continue
+            results.append({
+                "id": piece_id,
+                "title": found_title,
+                "midi": urljoin(page_url, midi_url.group(1)),
+                "pdf": urljoin(page_url, pdf_url.group(1)),
+                "source": page_url,
+            })
+        except (OSError, ValueError):
+            continue
+    return results
 
 def library():
     groups = {}
@@ -354,6 +401,10 @@ class Handler(SimpleHTTPRequestHandler):
         path=unquote(urlparse(self.path).path)
         if path == "/api/library": return self.send_json({"pieces":library(), "can_delete":self.is_intranet()})
         if path == "/api/progress": return self.send_json(load_progress())
+        if path == "/api/web-scores":
+            q = urlparse(self.path).query
+            params = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+            return self.send_json({"results": mutopia_search(unquote(params.get("q", "")))})
         if path.startswith("/api/jobs/"):
             with LOCK:
                 stored=JOBS.get(path.rsplit("/",1)[-1])
