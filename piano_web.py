@@ -162,7 +162,8 @@ def run_job(job_id, request):
         stem = safe_name(title or f"Piano_Solo_{job_id[:6]}")
         base = OUTPUT / stem
         source = Path(request["source"])
-        cmd = [os.sys.executable, str(ROOT / "song_to_piano.py"), str(source),
+        script = "song_to_piano_v2.py" if request.get("version") == "2" else "song_to_piano.py"
+        cmd = [os.sys.executable, str(ROOT / script), str(source),
                "--out", str(base), "--title", title or source.stem.replace("_", " ").title(),
                "--time", request["time"], "--accompaniment", request["accompaniment"],
                "--melody-register", request["melody_register"]]
@@ -445,9 +446,11 @@ class Handler(SimpleHTTPRequestHandler):
                 meter = fields.get("time", "auto")
                 accompaniment = fields.get("accompaniment", "flowing")
                 melody_register = fields.get("melody_register", "auto")
+                version = fields.get("version", "2")
                 if meter not in ("auto", "2/4", "3/4", "4/4"): raise ValueError("Choose a supported time signature.")
                 if accompaniment not in ("flowing", "alberti", "waltz", "chords"): raise ValueError("Choose a supported accompaniment.")
                 if melody_register not in ("auto", "lower", "original"): raise ValueError("Choose a supported melody register.")
+                if version not in ("1", "2"): raise ValueError("Choose a supported transcriber version.")
                 if accompaniment == "waltz" and meter not in ("auto", "3/4"): raise ValueError("Waltz accompaniment requires 3/4 time.")
                 max_text = fields.get("max_bars", "auto")
                 max_bars = None if max_text == "auto" else int(max_text)
@@ -469,8 +472,8 @@ class Handler(SimpleHTTPRequestHandler):
                         source_size = download_song(song_url, source)
                     clean = {"kind":"song", "source":str(source), "title":title,
                              "time":meter, "accompaniment":accompaniment,
-                             "melody_register":melody_register, "max_bars":max_bars,
-                             "bpm":bpm, "composer":"transcriber"}
+                             "melody_register": melody_register, "max_bars":max_bars,
+                             "bpm":bpm, "composer":"transcriber", "version":version}
                     JOBS[job_id] = {"id":job_id,"status":"queued","message":"Preparing your song…",
                                     "created":time.time(),"progress":2,"stage":"Queued",
                                     "composer":"transcriber","bars":max_bars,
